@@ -80,6 +80,17 @@ class ScoringEngine:
             is_remote=job.is_remote
         )
 
+        # 检查该地理层级是否被用户勾选启用
+        enabled_tiers = self.config_manager.cities_config.get("enabled_tiers", ["tier1_local", "tier2_adjacent", "tier3_province", "tier4_remote_or_national"])
+        if tier.value not in enabled_tiers:
+            return JobEvaluationResult(
+                score=0,
+                passed=False,
+                tier_level=tier,
+                distance_km=dist,
+                rejection_reason=f"岗位所在区域 [{tier.value}] 未在用户启用的筛选层级中"
+            )
+
         if not passed_pre:
             return JobEvaluationResult(
                 score=0,

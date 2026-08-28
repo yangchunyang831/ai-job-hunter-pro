@@ -205,6 +205,23 @@ async def save_config_data(config_name: str, req: ConfigDataUpdateRequest):
     return {"status": "success", "message": f"{config_name} 可视化空间辐射策略已成功保存生效！"}
 
 
+class ResolveSpatialRequest(BaseModel):
+    city: str
+    district: Optional[str] = None
+    address: Optional[str] = None
+
+@app.post("/api/spatial/resolve")
+async def resolve_spatial_structure(req: ResolveSpatialRequest):
+    """根据用户输入的居住地城市与区域，全自动推导全国 4 层空间地理辐射策略"""
+    from src.spatial_topology import derive_spatial_tiers
+    result = derive_spatial_tiers(
+        city_name=req.city,
+        district=req.district,
+        address=req.address
+    )
+    return {"status": "success", "derived_config": result}
+
+
 # ==========================================
 # 4. Chrome 与 Agent 控制接口 (子进程隔离驱动)
 # ==========================================

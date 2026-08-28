@@ -23,8 +23,9 @@ class TestConfigAndGeo(unittest.TestCase):
 
     def test_config_loading(self):
         """测试 4 个核心 YAML 配置文件是否完整有效"""
-        self.assertIn("cities", self.cfg.cities_config)
-        self.assertIn("hangzhou", self.cfg.cities_config["cities"])
+        self.assertIn("user_residence", self.cfg.cities_config)
+        self.assertIn("tiers_config", self.cfg.cities_config)
+        self.assertIn("enabled_tiers", self.cfg.cities_config)
         self.assertIn("basics", self.cfg.profile_config)
         self.assertIn("baseline_inquiries", self.cfg.inquiry_config)
         self.assertIn("outsourcing_companies", self.cfg.blacklist_config)

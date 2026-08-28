@@ -95,17 +95,38 @@ def run_pipeline(dry_run: bool = False, max_apply: int = 30):
 
     try:
         roles = cfg.profile_config.get("basics", {}).get("target_roles", ["AI Agent工程师"])
-        active_cities = cfg.cities_config.get("active_cities", ["hangzhou"])
         
+        # 解析 4 层空间地理辐射检索城市列表
+        user_res = cfg.cities_config.get("user_residence", {})
+        tiers_cfg = cfg.cities_config.get("tiers_config", {})
+        enabled_tiers = cfg.cities_config.get("enabled_tiers", ["tier1_local", "tier2_adjacent", "tier4_remote_or_national"])
+
+        home_city = user_res.get("city", "杭州")
         city_targets = []
-        for ac in active_cities:
-            c_info = cfg.cities_config.get("cities", {}).get(ac, {})
-            c_name = c_info.get("city_name", "杭州")
-            c_code = controller.CITY_CODE_MAP.get(c_name, "101210100")
-            city_targets.append((c_name, c_code))
+
+        # 1. 若开启 Tier 1，加入居住地主城市
+        if "tier1_local" in enabled_tiers and home_city:
+            code = controller.CITY_CODE_MAP.get(home_city, "101210100")
+            city_targets.append((f"{home_city} (Tier 1 居住地)", code))
+
+        # 2. 若开启 Tier 2，加入邻近地级市
+        if "tier2_adjacent" in enabled_tiers:
+            t2 = tiers_cfg.get("tier2_adjacent", {})
+            for adj in t2.get("adjacent_cities", []):
+                code = controller.CITY_CODE_MAP.get(adj)
+                if code and not any(t[1] == code for t in city_targets):
+                    city_targets.append((f"{adj} (Tier 2 邻近市)", code))
+
+        # 3. 若开启 Tier 4，加入全国重点城市群及远程
+        if "tier4_remote_or_national" in enabled_tiers:
+            t4 = tiers_cfg.get("tier4_remote_or_national", {})
+            for hub in t4.get("target_hub_cities", ["上海", "深圳", "北京"]):
+                code = controller.CITY_CODE_MAP.get(hub)
+                if code and not any(t[1] == code for t in city_targets):
+                    city_targets.append((f"{hub} (Tier 4 核心枢纽)", code))
 
         if not city_targets:
-            city_targets = [("杭州", "101210100")]
+            city_targets = [(f"{home_city} (主城市)", "101210100")]
 
         high_match_results = []
         scanned_count = 0

@@ -55,12 +55,27 @@ class TestWebAPI(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("data", data)
-        self.assertIn("cities", data["data"])
-        self.assertIn("hangzhou", data["data"]["cities"])
+        self.assertIn("user_residence", data["data"])
+        self.assertIn("tiers_config", data["data"])
 
         # 保存测试
         save_resp = self.client.post("/api/config/cities/data", json={"data": data["data"]})
         self.assertEqual(save_resp.status_code, 200)
+
+    def test_resolve_spatial_topology_api(self):
+        """测试根据居住地自动推导 4 层空间辐射策略接口"""
+        resp = self.client.post("/api/spatial/resolve", json={
+            "city": "上海",
+            "district": "浦东新区",
+            "address": "张江高科"
+        })
+        self.assertEqual(resp.status_code, 200)
+        json_data = resp.json()
+        self.assertEqual(json_data["status"], "success")
+        derived = json_data["derived_config"]
+        self.assertEqual(derived["user_residence"]["city"], "上海")
+        self.assertIn("tier1_local", derived["tiers_config"])
+        self.assertIn("苏州", derived["tiers_config"]["tier2_adjacent"]["adjacent_cities"])
 
 
 if __name__ == "__main__":
