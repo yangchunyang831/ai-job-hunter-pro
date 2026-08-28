@@ -1,0 +1,8 @@
+# Python dependencies for AI Agent Job Hunting System
+playwright>=1.42.0
+pyyaml>=6.0.1
+pydantic>=2.6.0
+openai>=1.14.0
+httpx>=0.27.0
+rich>=13.7.0
+python-dotenv>=1.0.1
