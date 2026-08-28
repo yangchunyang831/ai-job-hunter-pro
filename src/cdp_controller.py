@@ -105,26 +105,88 @@ class CDPBrowserController:
                 pass
         return False
 
+    CITY_CODE_MAP = {
+        "杭州": "101210100",
+        "上海": "101020100",
+        "北京": "101010100",
+        "深圳": "101280600",
+        "广州": "101280100",
+        "成都": "101270100",
+        "武汉": "101200100",
+        "南京": "101190100",
+        "苏州": "101190400",
+        "全国": "100010000"
+    }
+
     def scan_jobs_page(self, query: str, city_code: str = "101210100") -> Generator[RawJobCard, None, None]:
         """
-        导航至 BOSS 直聘搜索页并提取岗位卡片数据
-        (city_code 101210100 对应杭州，101020100 对应上海，101280600 对应深圳)
+        导航至 BOSS 直聘搜索页并提取岗位卡片数据 (支持多重选择器与 URL 编码)
         """
+        import urllib.parse
+
         if not self.search_page or self.search_page.is_closed():
             self.search_page = self.context.new_page()
 
-        search_url = f"https://www.zhipin.com/web/geek/job?query={query}&city={city_code}"
+        # URL 编码防止中文和空格破坏检索参数
+        encoded_query = urllib.parse.quote(query.strip())
+        search_url = f"https://www.zhipin.com/web/geek/job?query={encoded_query}&city={city_code}"
         logger.info(f"Navigating to: {search_url}")
-        self.search_page.goto(search_url, wait_until="domcontentloaded")
-        self.human_delay(2.0, 4.0)
+        
+        try:
+            self.search_page.goto(search_url, wait_until="domcontentloaded", timeout=15000)
+        except Exception as e:
+            logger.warning(f"页面加载超时或中断: {e}")
+
+        self.human_delay(1.5, 3.0)
         self.check_and_handle_captcha(self.search_page)
 
-        # 模拟鼠标向下滚动加载
-        self.search_page.mouse.wheel(0, random.randint(300, 600))
-        self.human_delay(1.5, 3.0)
+        # 模拟真实鼠标滚轮加载更多动态数据
+        try:
+            self.search_page.mouse.wheel(0, random.randint(300, 600))
+        except Exception:
+            pass
+        self.human_delay(1.0, 2.0)
 
-        job_elements = self.search_page.query_selector_all(".job-card-wrapper")
+        # 多重选择器兼容策略
+        card_selectors = [
+            ".job-card-wrapper",
+            ".job-card-box",
+            "ul.job-list-box > li",
+            "li.job-card-wrapper",
+            "[class*='job-card']",
+            ".job-primary"
+        ]
+
+        # 等待列表元素渲染
+        try:
+            self.search_page.wait_for_selector(
+                ", ".join(card_selectors),
+                timeout=6000
+            )
+        except Exception:
+            logger.info("等待列表选择器渲染完成...")
+
+        job_elements = []
+        for sel in card_selectors:
+            try:
+                elems = self.search_page.query_selector_all(sel)
+                if elems and len(elems) > 0:
+                    job_elements = elems
+                    break
+            except Exception:
+                pass
+
         logger.info(f"Found {len(job_elements)} job cards on current page.")
+
+        def query_first(parent, selectors: List[str]):
+            for s in selectors:
+                try:
+                    el = parent.query_selector(s)
+                    if el:
+                        return el
+                except Exception:
+                    pass
+            return None
 
         for card in job_elements:
             if self.stop_event and self.stop_event.is_set():
@@ -132,10 +194,10 @@ class CDPBrowserController:
                 break
             try:
                 # 提取列表级基本信息
-                title_elem = card.query_selector(".job-name")
-                company_elem = card.query_selector(".company-name")
-                salary_elem = card.query_selector(".salary")
-                area_elem = card.query_selector(".job-area")
+                title_elem = query_first(card, [".job-name", "[class*='job-name']", ".job-title", "span.name", "a.job-name"])
+                company_elem = query_first(card, [".company-name", "[class*='company-name']", ".company-title", "a.company-name"])
+                salary_elem = query_first(card, [".salary", "[class*='salary']", "span.salary", ".salary-text"])
+                area_elem = query_first(card, [".job-area", "[class*='job-area']", ".company-location", "span.area"])
 
                 if not (title_elem and company_elem and salary_elem):
                     continue
@@ -146,18 +208,28 @@ class CDPBrowserController:
                 area = area_elem.inner_text().strip() if area_elem else ""
 
                 # 点击卡片加载右侧详情
-                card.click()
-                self.human_delay(1.0, 2.0)
+                try:
+                    card.click(timeout=3000)
+                except Exception:
+                    pass
+                self.human_delay(0.8, 1.5)
                 self.check_and_handle_captcha(self.search_page)
 
                 # 提取 JD 详情
-                detail_sec = self.search_page.query_selector(".job-detail-section")
+                detail_sec = query_first(self.search_page, [
+                    ".job-detail-section",
+                    ".job-sec-text",
+                    "[class*='job-detail']",
+                    "[class*='detail-section']",
+                    ".job-detail",
+                    ".job-detail-box"
+                ])
                 jd_text = detail_sec.inner_text().strip() if detail_sec else ""
 
-                hr_title_elem = self.search_page.query_selector(".boss-info-attr")
+                hr_title_elem = query_first(self.search_page, [".boss-info-attr", "[class*='boss-info-attr']", ".boss-title"])
                 hr_title = hr_title_elem.inner_text().strip() if hr_title_elem else "HR"
                 
-                hr_active_elem = self.search_page.query_selector(".boss-active-time")
+                hr_active_elem = query_first(self.search_page, [".boss-active-time", "[class*='boss-active-time']", ".active-time"])
                 hr_active = hr_active_elem.inner_text().strip() if hr_active_elem else "刚刚活跃"
 
                 # 构造唯一 ID

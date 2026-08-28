@@ -94,24 +94,36 @@ def run_pipeline(dry_run: bool = False, max_apply: int = 30):
     controller.connect()
 
     try:
-        # 读取配置中的目标职位列表
         roles = cfg.profile_config.get("basics", {}).get("target_roles", ["AI Agent工程师"])
+        active_cities = cfg.cities_config.get("active_cities", ["hangzhou"])
+        
+        city_targets = []
+        for ac in active_cities:
+            c_info = cfg.cities_config.get("cities", {}).get(ac, {})
+            c_name = c_info.get("city_name", "杭州")
+            c_code = controller.CITY_CODE_MAP.get(c_name, "101210100")
+            city_targets.append((c_name, c_code))
+
+        if not city_targets:
+            city_targets = [("杭州", "101210100")]
+
         high_match_results = []
         scanned_count = 0
 
-        for role in roles:
-            console.print(f"\n🔍 正在检索职位关键词: [bold cyan]{role}[/bold cyan] ...")
-            
-            for job in controller.scan_jobs_page(query=role):
-                scanned_count += 1
+        for c_name, c_code in city_targets:
+            for role in roles:
+                console.print(f"\n🔍 正在检索城市【{c_name}】职位关键词: [bold cyan]{role}[/bold cyan] ...")
                 
-                # 检查冷却期
-                if db.is_job_applied_recently(job.job_id):
-                    logger.info(f"岗位 {job.company_name} - {job.job_title} 在冷却期内，跳过。")
-                    continue
+                for job in controller.scan_jobs_page(query=role, city_code=c_code):
+                    scanned_count += 1
+                    
+                    # 检查冷却期
+                    if db.is_job_applied_recently(job.job_id):
+                        logger.info(f"岗位 {job.company_name} - {job.job_title} 在冷却期内，跳过。")
+                        continue
 
-                # 评估打分
-                result = engine.evaluate_job_with_llm(job)
+                    # 评估打分
+                    result = engine.evaluate_job_with_llm(job)
                 
                 if result.passed:
                     console.print(f"✅ [bold green]命中优质岗位[/bold green]: 【{job.company_name}】{job.job_title} ({job.salary_raw}) | 得分: {result.score} [{result.tier_level.value}]")
