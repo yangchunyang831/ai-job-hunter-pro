@@ -28,9 +28,9 @@
             font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             color: var(--text-main);
             background-color: #f1f5f9;
-            line-height: 1.5;
+            line-height: 1.45;
             -webkit-font-smoothing: antialiased;
-            padding: 24px;
+            padding: 20px;
         }
 
         .resume-container {
@@ -39,7 +39,7 @@
             background: #ffffff;
             border-radius: 12px;
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
-            padding: 34px 40px;
+            padding: 28px 36px;
             position: relative;
         }
 
@@ -49,9 +49,9 @@
             align-items: center;
             justify-content: space-between;
             border-bottom: 2px solid var(--primary);
-            padding-bottom: 18px;
-            margin-bottom: 18px;
-            gap: 20px;
+            padding-bottom: 14px;
+            margin-bottom: 14px;
+            gap: 16px;
         }
 
         .header-info {
@@ -59,7 +59,7 @@
         }
 
         .candidate-name {
-            font-size: 28px;
+            font-size: 26px;
             font-weight: 700;
             color: var(--primary);
             letter-spacing: 1px;
@@ -69,25 +69,25 @@
         }
 
         .target-role {
-            font-size: 13.5px;
+            font-size: 13px;
             font-weight: 600;
             color: #0284c7;
             background: #e0f2fe;
-            padding: 2px 10px;
-            border-radius: 6px;
+            padding: 2px 8px;
+            border-radius: 5px;
         }
 
         .quick-badges {
             display: flex;
-            gap: 8px;
-            margin-top: 8px;
+            gap: 6px;
+            margin-top: 6px;
             flex-wrap: wrap;
         }
 
         .badge {
-            font-size: 12px;
+            font-size: 11.5px;
             font-weight: 500;
-            padding: 2px 8px;
+            padding: 2px 7px;
             border-radius: 4px;
             background: #f1f5f9;
             color: #475569;
@@ -102,11 +102,11 @@
         }
 
         .contact-grid {
-            margin-top: 12px;
+            margin-top: 10px;
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 6px 16px;
-            font-size: 13px;
+            gap: 4px 14px;
+            font-size: 12.5px;
             color: var(--text-muted);
         }
 
@@ -121,12 +121,12 @@
         }
 
         .avatar-box {
-            width: 105px;
-            height: 140px;
-            border-radius: 8px;
+            width: 95px;
+            height: 125px;
+            border-radius: 6px;
             overflow: hidden;
             border: 2px solid #e2e8f0;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
             flex-shrink: 0;
             background: #f8fafc;
         }
@@ -140,7 +140,7 @@
 
         /* 模块样式 */
         .section {
-            margin-bottom: 18px;
+            margin-bottom: 14px;
         }
 
         .section:last-child {
@@ -148,13 +148,13 @@
         }
 
         .section-title {
-            font-size: 15.5px;
+            font-size: 14.5px;
             font-weight: 700;
             color: var(--primary);
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
+            gap: 6px;
+            margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -163,7 +163,7 @@
             content: "";
             display: inline-block;
             width: 4px;
-            height: 15px;
+            height: 14px;
             background: var(--primary-light);
             border-radius: 2px;
         }
@@ -175,13 +175,13 @@
             align-items: baseline;
             background: var(--bg-card);
             border: 1px solid var(--border-color);
-            padding: 9px 16px;
-            border-radius: 8px;
-            font-size: 13px;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 12.5px;
         }
 
         .edu-school {
-            font-size: 14px;
+            font-size: 13.5px;
             font-weight: 700;
             color: var(--text-main);
         }
@@ -193,7 +193,7 @@
 
         .edu-time {
             color: var(--text-muted);
-            font-size: 12.5px;
+            font-size: 12px;
             font-weight: 600;
         }
 
@@ -201,18 +201,18 @@
         .skills-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-            font-size: 13px;
+            gap: 8px;
+            font-size: 12.5px;
         }
 
         .skill-item {
             background: var(--bg-card);
             border: 1px solid var(--border-color);
-            padding: 9px 13px;
-            border-radius: 8px;
+            padding: 7px 12px;
+            border-radius: 6px;
             display: flex;
             flex-direction: column;
-            gap: 3px;
+            gap: 2px;
         }
 
         .skill-name {
@@ -220,88 +220,89 @@
             color: var(--primary);
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
+            font-size: 12.5px;
         }
 
         .skill-desc {
             color: var(--text-muted);
-            font-size: 12px;
-            line-height: 1.4;
+            font-size: 11.5px;
+            line-height: 1.35;
         }
 
-        /* 项目经验 */
+        /* 项目经验 (3个项目并列) */
         .project-list {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 9px;
         }
 
         .project-card {
             border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 13px 16px;
+            border-radius: 6px;
+            padding: 9px 13px;
             background: #ffffff;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.02);
         }
 
         .project-header {
             display: flex;
             justify-content: space-between;
             align-items: baseline;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
 
         .project-title {
-            font-size: 13.5px;
+            font-size: 13px;
             font-weight: 700;
             color: var(--text-main);
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
 
         .project-tag {
-            font-size: 11px;
+            font-size: 10.5px;
             background: #e0e7ff;
             color: #3730a3;
-            padding: 1px 6px;
-            border-radius: 4px;
+            padding: 1px 5px;
+            border-radius: 3px;
             font-weight: 600;
         }
 
         .project-role {
-            font-size: 12px;
+            font-size: 11.5px;
             color: #0284c7;
             font-weight: 600;
         }
 
         .project-tech {
-            font-size: 11.5px;
+            font-size: 11px;
             color: var(--text-muted);
-            margin-bottom: 7px;
+            margin-bottom: 4px;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         }
 
         .project-desc {
-            font-size: 12.5px;
+            font-size: 11.5px;
             color: #334155;
-            margin-bottom: 7px;
-            line-height: 1.45;
+            margin-bottom: 4px;
+            line-height: 1.4;
         }
 
         .project-bullets {
             list-style: none;
             display: flex;
             flex-direction: column;
-            gap: 4px;
-            font-size: 12px;
+            gap: 2.5px;
+            font-size: 11.5px;
             color: #334155;
         }
 
         .project-bullets li {
             position: relative;
-            padding-left: 14px;
-            line-height: 1.45;
+            padding-left: 12px;
+            line-height: 1.35;
         }
 
         .project-bullets li::before {
@@ -316,13 +317,13 @@
         .summary-box {
             background: var(--bg-card);
             border-left: 3px solid var(--primary-light);
-            padding: 9px 14px;
-            border-radius: 0 8px 8px 0;
-            font-size: 12px;
+            padding: 8px 12px;
+            border-radius: 0 6px 6px 0;
+            font-size: 11.5px;
             color: #334155;
             display: flex;
             flex-direction: column;
-            gap: 5px;
+            gap: 4px;
         }
 
         /* 打印适配 */
@@ -333,7 +334,7 @@
             }
             .resume-container {
                 box-shadow: none;
-                padding: 20px 24px;
+                padding: 18px 20px;
                 border-radius: 0;
                 max-width: 100%;
             }
@@ -342,7 +343,7 @@
             }
             @page {
                 size: A4;
-                margin: 7mm;
+                margin: 6mm;
             }
         }
     </style>
@@ -350,9 +351,9 @@
 <body>
 
     <!-- 顶部操作栏 (网页端可见，打印自动隐藏) -->
-    <div class="no-print" style="max-width: 820px; margin: 0 auto 16px auto; display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 13px; color: #64748b; font-weight: 500;">📄 个人简历预览 (支持一键导出标准 A4 PDF)</span>
-        <button onclick="window.print()" style="background: #2563eb; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 4px rgba(37,99,235,0.2);">
+    <div class="no-print" style="max-width: 820px; margin: 0 auto 12px auto; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 13px; color: #64748b; font-weight: 500;">📄 个人简历预览 (3个精选项目高阶版，支持一键导出 A4 PDF)</span>
+        <button onclick="window.print()" style="background: #2563eb; color: #fff; border: none; padding: 7px 15px; border-radius: 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 4px rgba(37,99,235,0.2);">
             🖨️ 打印 / 导出为 PDF
         </button>
     </div>
@@ -422,14 +423,14 @@
                 </div>
                 <div class="skill-item">
                     <span class="skill-name">⚡ 自动化工程与 GUI 交互开发</span>
-                    <span class="skill-desc">具备 Python、自动化流程控制与 GUI 交互界面开发经验，掌握联盟链底层架构与智能合约设计。</span>
+                    <span class="skill-desc">具备 Python、自动化流程控制与 GUI 交互界面开发经验，熟悉大模型运维与联盟链智能合约。</span>
                 </div>
             </div>
         </section>
 
-        <!-- 精选项目经验 (GitHub 开源项目) -->
+        <!-- 精选项目经验 (GitHub 3大项目并列精简) -->
         <section class="section">
-            <div class="section-title">精选项目经验 (GitHub 开源项目)</div>
+            <div class="section-title">精选项目经验 (GitHub 开源 / 毕业设计)</div>
             <div class="project-list">
                 <!-- 项目 1 -->
                 <div class="project-card">
@@ -440,14 +441,10 @@
                         </div>
                         <span class="project-role">独立设计与开发者</span>
                     </div>
-                    <div class="project-tech">技术栈: Python / GUI 可视化引擎 / 自动化协议控制 / 大模型协同 / 数据存储</div>
-                    <div class="project-desc">
-                        面向多维度求职场景研发的自动化数据处理与智能辅助决策系统，集成桌面级 GUI 可视化交互面板、多层级空间地理辐射算法与安全风控体系。
-                    </div>
+                    <div class="project-tech">技术栈: Python / GUI 交互引擎 / 自动化流程调度 / 大模型协同 / 数据存储</div>
                     <ul class="project-bullets">
-                        <li><strong>专业 GUI 可视化中台</strong>：设计并实现桌面级 GUI 交互控制中台，实现运行状态监控、参数可视化配置与多通道即时协同。</li>
-                        <li><strong>自动化流程调度</strong>：基于底层协议实现高稳定性、低风控的数据检索与拟人化智能沟通引擎。</li>
-                        <li><strong>空间拓扑与安全防护</strong>：设计基于居住地（洪江市）的多级空间地理辐射算法与合规安全防护机制。</li>
+                        <li><strong>桌面级 GUI 可视化中台</strong>：设计并实现桌面 GUI 控制面板，提供运行状态监控、参数可视化配置与多通道协同。</li>
+                        <li><strong>自动化流程调度</strong>：基于底层协议实现高稳定性流程调度与拟人化沟通，集成居住地（洪江市）空间辐射与安全防火墙。</li>
                     </ul>
                 </div>
 
@@ -455,19 +452,31 @@
                 <div class="project-card">
                     <div class="project-header">
                         <div class="project-title">
-                            基于 FISCO BCOS 的运动健康打卡存证系统
+                            DSH-Manager - 大模型服务智能管理与运维中台
                             <span class="project-tag">GitHub 开源</span>
+                        </div>
+                        <span class="project-role">独立设计与开发者</span>
+                    </div>
+                    <div class="project-tech">技术栈: 自动化脚本 / 进程与端口守护 / Web服务调度 / 故障自愈</div>
+                    <ul class="project-bullets">
+                        <li><strong>一键化服务运维中台</strong>：为本地大模型 Web 服务提供环境自检、一键启停、端口冲突排查与后台健康监控。</li>
+                        <li><strong>进程守护与异常熔断</strong>：实现服务生命周期调度与状态自愈机制，简化复杂模型服务运维成本。</li>
+                    </ul>
+                </div>
+
+                <!-- 项目 3 -->
+                <div class="project-card">
+                    <div class="project-header">
+                        <div class="project-title">
+                            基于 FISCO BCOS 的运动打卡与数据存证系统
+                            <span class="project-tag">本科毕业设计</span>
                         </div>
                         <span class="project-role">核心设计与开发者</span>
                     </div>
-                    <div class="project-tech">技术栈: Solidity / FISCO BCOS / 联盟链架构 / Python / 数据库系统 / 密码学存证</div>
-                    <div class="project-desc">
-                        基于国内主流开源联盟链底层架构构建的分布式数据存证与防篡改验证系统，解决业务流程中数据可信存管与多方协同问题。
-                    </div>
+                    <div class="project-tech">技术栈: Solidity / FISCO BCOS / 联盟链架构 / 数据防篡改存证</div>
                     <ul class="project-bullets">
-                        <li><strong>智能合约架构设计</strong>：负责数据存证与权限管控智能合约编写与逻辑实现，保障业务数据全流程可信与防篡改。</li>
-                        <li><strong>底层网络部署运维</strong>：完成区块链底层节点网络搭建与可视化运维管理，实现链上存证与链下数据高效协同。</li>
-                        <li><strong>工程成果交付</strong>：完成全套系统实现与技术论文撰写，获评计算机科学与工程学院优秀毕业设计。</li>
+                        <li><strong>智能合约与多方存证</strong>：设计运动数据上链与防篡改存证智能合约，保障业务数据可信与权限管控。</li>
+                        <li><strong>联盟链网络运维交付</strong>：完成区块链多节点底层网络搭建与可视化运维，论文获评学院优秀毕业设计。</li>
                     </ul>
                 </div>
             </div>
