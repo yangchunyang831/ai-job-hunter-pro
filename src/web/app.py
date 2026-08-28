@@ -26,8 +26,14 @@ from src.cdp_controller import CDPBrowserController
 
 from datetime import datetime
 import subprocess
+import socket
 
 app = FastAPI(title="AI Job Hunter Pro Dashboard")
+
+# 屏蔽第三方网络库的高频轮询日志
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 # 全局状态管理
 class AppState:
@@ -41,6 +47,9 @@ state = AppState()
 # 自定义 WebSocket 日志处理器
 class WebSocketLogHandler(logging.Handler):
     def emit(self, record):
+        # 过滤掉内部状态探测与心跳日志
+        if record.name.startswith(("httpx", "httpcore", "uvicorn")):
+            return
         log_entry = self.format(record)
         msg_payload = {
             "level": record.levelname,
@@ -69,6 +78,16 @@ async def startup_event():
     async_loop = asyncio.get_running_loop()
 
 
+def is_port_open(host: str = "127.0.0.1", port: int = 9222) -> bool:
+    """毫秒级检测端口连通性 (零网络日志噪点)"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.3)
+            return s.connect_ex((host, port)) == 0
+    except Exception:
+        return False
+
+
 # ==========================================
 # 1. 页面路由
 # ==========================================
@@ -86,15 +105,7 @@ async def serve_dashboard():
 # ==========================================
 @app.get("/api/status")
 async def get_system_status():
-    chrome_online = False
-    try:
-        async with httpx.AsyncClient(timeout=1.0) as client:
-            resp = await client.get("http://127.0.0.1:9222/json/version")
-            if resp.status_code == 200:
-                chrome_online = True
-    except Exception:
-        chrome_online = False
-
+    chrome_online = is_port_open("127.0.0.1", 9222)
     db = DatabaseManager()
     today_applied = db.get_today_apply_count()
 
