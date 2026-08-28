@@ -1,12 +1,12 @@
-# AI Agent 智能求职自动化与多轮沟通系统
+# AI Job Hunter Pro - 企业级全流程智能求职与拟人化沟通中台
 
-> **一站式搞定“智能筛选 $\rightarrow$ 定制打招呼/投递 $\rightarrow$ 基础信息摸底 $\rightarrow$ 自定义多轮追问 $\rightarrow$ 飞书/微信人机协同”的全流程求职助手。**
+> **一站式搞定“智能筛选 $\rightarrow$ 定制打招呼/投递 $\rightarrow$ 基础信息摸底 $\rightarrow$ 自定义多轮追问 $\rightarrow$ 微信/飞书多通道协同”的专业级全流程求职助手。**
 
 ---
 
 ## 📖 项目定位与核心优势
 
-本项目基于 **真实 Chrome + CDP (Chrome DevTools Protocol) + Python + DeepSeek + 飞书/微信 Webhook** 打造，旨在为求职者提供一套**高稳定性、零封号风险、精准匹配、信息透明**的智能化求职闭环。
+本项目基于 **真实 Chrome + CDP (Chrome DevTools Protocol) + Python + DeepSeek + 微信/飞书 Bot 协同** 打造，集成**桌面级专业 GUI 可视化交互控制中台**，旨在为求职者提供一套**高稳定性、零封号风险、精准匹配、信息透明**的智能化求职闭环。
 
 ### 🌟 核心特色
 1. **真实浏览器 CDP 直连（极低风控）**：复用日常 Chrome 浏览器的登录态、Cookie、指纹与扩展插件，零 WebDriver 自动化指纹。
@@ -17,11 +17,13 @@
    - **Tier 4 全国优质机会 / 远程办公（Remote）**：专属绿色通道，最高优先级。
 3. **全方位人身安全合规与反诈防火墙**：
    - 零 Token 快速拦截境外高危、涉诈灰产、刷单押金、虚假套路岗位，全方位守护求职安全。
-4. **微信 & 飞书 Bot 双通道智能联动中台**：
+4. **专业桌面级 GUI 可视化交互中台**：
+   - 支持全局运行状态实时监控、4 级空间拓扑辐射交互配置、多维筛选参数双向绑定及日志流实时追踪。
+5. **微信 & 飞书 Bot 双通道智能联动中台**：
    - 当 HR 留下微信/手机号或发出约面邀约时，自动生成标准化得体的加微打招呼申请词，并向飞书/企业微信群推送高亮通知卡片。
-5. **全方位基础工作信息摸底与拟人化追问引擎**：
+6. **全方位基础工作信息摸底与拟人化追问引擎**：
    - AI 自动在多轮沟通中摸清：**薪资结构（Base/绩效/年终）、试用期打折与五险一金缴纳、工作时间（965/996/大小周/弹性）、业务属性、办公地点**。
-6. **精美个人简历生成中台**：
+7. **精美个人简历生成中台**：
    - 内置 HTML / Markdown / A4 像素级高清 PDF 打印级简历自动生成引擎。
 
 ---
@@ -50,7 +52,7 @@ d:\招聘\
     ├── scoring_engine.py                # 评分引擎与人身安全反诈防火墙
     ├── conversation_fsm.py              # 多轮沟通有限状态机
     ├── db_storage.py                    # SQLite 数据存储层
-    └── web/                             # Web GUI 可视化中台
+    └── web/                             # 桌面级 GUI 可视化中台
 ```
 
 ---
@@ -71,16 +73,16 @@ chrome.exe --remote-debugging-port=9222 --user-data-dir="C:\chrome_debug_profile
 在打开的 Chrome 中打开 [BOSS直聘](https://www.zhipin.com) 并手动扫码登录。
 
 ### 3. 配置项目参数
-根据个人情况修改 `config/` 目录下的配置文件或直接在 Web GUI 中可视化修改：
+根据个人情况修改 `config/` 目录下的配置文件或直接在 GUI 可视化控制中台中配置：
 1. `config/candidate_profile.yaml`：个人履历画像、期望薪资底线。
 2. `config/cities.yaml`：居住地与空间辐射规则。
 3. `config/bot_config.yaml`：飞书与微信 Webhook 及打招呼模板。
 
-### 4. 使用项目专属虚拟环境 (.venv) 与 GUI 运行
-本项目内置了独立的 `.venv` 虚拟环境与 **高颜值可视化 Web GUI 控制中台**：
+### 4. 启动专业桌面级 GUI 可视化控制中台 (推荐)
+本项目内置了独立的 `.venv` 虚拟环境与 **专业 GUI 可视化控制中台**：
 
 ```powershell
-# 🌟 启动 Web GUI 交互控制中台 (推荐！浏览器自动打开 http://127.0.0.1:8765)
+# 🌟 启动 GUI 交互控制中台 (推荐！自动打开可视化中台窗口)
 .\.venv\Scripts\python main.py gui
 
 # 也可以直接双击项目根目录下的 start_gui.bat 一键启动！
