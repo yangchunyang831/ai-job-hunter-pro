@@ -74,6 +74,7 @@ class ScoringEngine:
         # 2. 地理层级判定
         tier, dist, tier_meta = self.config_manager.match_city_tier(
             city_name=job.city,
+            district=job.district,
             target_lat=job.latitude,
             target_lon=job.longitude,
             is_remote=job.is_remote

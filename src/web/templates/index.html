@@ -164,12 +164,18 @@
                                         <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold text-xs">
                                             {{ job.salary_raw }}
                                         </span>
-                                        <span v-if="job.geo_tier === 'tier1_local'" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-xs flex items-center gap-1">
+                                        <span v-if="job.geo_tier === 'tier1_local'" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-xs flex items-center gap-1 font-semibold">
                                             <i data-lucide="map-pin" class="w-3 h-3"></i>
-                                            <span>10km本地圈</span>
+                                            <span>Tier 1: 10km本地圈</span>
                                         </span>
-                                        <span v-else-if="job.geo_tier === 'tier4_remote_or_national'" class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 text-xs">
-                                            🌐 远程/全国
+                                        <span v-else-if="job.geo_tier === 'tier2_adjacent'" class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 text-xs font-semibold">
+                                            🚆 Tier 2: 邻近地级市
+                                        </span>
+                                        <span v-else-if="job.geo_tier === 'tier3_province'" class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-xs font-semibold">
+                                            🏢 Tier 3: 省内中心
+                                        </span>
+                                        <span v-else-if="job.geo_tier === 'tier4_remote_or_national'" class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 text-xs font-semibold">
+                                            🌐 Tier 4: 远程/全国优质
                                         </span>
                                     </div>
                                     <div class="flex items-center gap-3 text-xs text-slate-400 mt-1">

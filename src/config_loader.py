@@ -37,47 +37,87 @@ class ConfigManager:
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return round(R * c, 2)
 
-    def match_city_tier(self, city_name: str, target_lat: Optional[float], target_lon: Optional[float], is_remote: bool = False) -> Tuple[GeoTierLevel, float, Dict[str, Any]]:
-        """根据城市、坐标与远程标记，计算所属的地理辐射层级与策略参数"""
+    def match_city_tier(self, city_name: str, target_lat: Optional[float] = None, target_lon: Optional[float] = None, district: Optional[str] = None, is_remote: bool = False) -> Tuple[GeoTierLevel, float, Dict[str, Any]]:
+        """
+        根据城市、行政区、坐标与远程标记，精准计算所属的 4 级空间地理辐射层级与差异化策略
+        """
+        # 兼容若第二个参数传了字符串 district
+        if isinstance(target_lat, str) and district is None:
+            district = target_lat
+            target_lat = None
+
         if is_remote:
             return GeoTierLevel.TIER4_REMOTE_OR_NATIONAL, 0.0, {
                 "min_score": 88,
                 "priority_bonus": 20,
-                "desc": "全国远程专属通道"
+                "desc": "全国远程专属通道 (+20分特权加分)"
             }
 
-        # 查找配置中的城市
+        # 查找配置中的所有目标城市
         for c_key, c_val in self.cities_config.get("cities", {}).items():
-            if c_val.get("city_name") in city_name or city_name in c_val.get("city_name", ""):
-                anchor = c_val.get("anchor", {})
-                anchor_lat = anchor.get("latitude")
-                anchor_lon = anchor.get("longitude")
-                
+            conf_city_name = c_val.get("city_name", "")
+            province = c_val.get("province", "")
+            anchor = c_val.get("anchor", {})
+            anchor_district = anchor.get("district", "")
+            anchor_lat = anchor.get("latitude")
+            anchor_lon = anchor.get("longitude")
+            tiers = c_val.get("tiers", {})
+
+            # 1. 命中同城
+            if conf_city_name and (conf_city_name in city_name or city_name in conf_city_name):
                 dist = 0.0
                 if target_lat and target_lon and anchor_lat and anchor_lon:
                     dist = self.calculate_distance(anchor_lat, anchor_lon, target_lat, target_lon)
 
-                tiers = c_val.get("tiers", {})
+                # Tier 1 判定：距离 <= 10km 或同在核心居住区 (如余杭区/浦东新区)
                 t1 = tiers.get("tier1_local_commute", {})
-                if dist > 0 and dist <= t1.get("max_distance_km", 10.0):
-                    return GeoTierLevel.TIER1_LOCAL, dist, {
+                max_dist = t1.get("max_distance_km", 10.0)
+                is_same_district = bool(district and isinstance(district, str) and anchor_district and (district in anchor_district or anchor_district in district))
+
+                if (dist > 0 and dist <= max_dist) or (dist == 0.0 and is_same_district):
+                    return GeoTierLevel.TIER1_LOCAL, (dist if dist > 0 else 4.5), {
                         "min_score": t1.get("min_score_required", 75),
                         "priority_bonus": t1.get("priority_bonus", 15),
-                        "salary_ratio": t1.get("salary_adjustment_ratio", 0.9)
+                        "salary_ratio": t1.get("salary_adjustment_ratio", 0.90),
+                        "desc": "Tier 1: 10km 本地神仙通勤圈"
                     }
 
+                # 同城非核心区，归入 Tier 2
                 t2 = tiers.get("tier2_adjacent_metro", {})
-                return GeoTierLevel.TIER2_ADJACENT, dist, {
+                return GeoTierLevel.TIER2_ADJACENT, (dist if dist > 0 else 22.0), {
                     "min_score": t2.get("min_score_required", 80),
                     "priority_bonus": t2.get("priority_bonus", 5),
-                    "salary_ratio": t2.get("salary_adjustment_ratio", 1.0)
+                    "salary_ratio": t2.get("salary_adjustment_ratio", 1.00),
+                    "desc": "Tier 2: 同城扩展/邻近地级市"
                 }
 
-        # 默认为 Tier 4
+            # 2. 命中邻近地级市 (如绍兴、嘉兴、湖州、宁波等)
+            t2 = tiers.get("tier2_adjacent_metro", {})
+            adjacent_cities = t2.get("adjacent_city_names", [])
+            if any(ac in city_name for ac in adjacent_cities):
+                return GeoTierLevel.TIER2_ADJACENT, 45.0, {
+                    "min_score": t2.get("min_score_required", 80),
+                    "priority_bonus": t2.get("priority_bonus", 5),
+                    "salary_ratio": t2.get("salary_adjustment_ratio", 1.00),
+                    "desc": "Tier 2: 邻近核心地级市"
+                }
+
+            # 3. 命中同省内其他地级市
+            if province and (province in city_name or city_name in province):
+                t3 = tiers.get("tier3_province_wide", {})
+                return GeoTierLevel.TIER3_PROVINCE, 120.0, {
+                    "min_score": t3.get("min_score_required", 85),
+                    "priority_bonus": t3.get("priority_bonus", 0),
+                    "salary_ratio": t3.get("salary_adjustment_ratio", 1.15),
+                    "desc": "Tier 3: 省内其他中心城市"
+                }
+
+        # 4. 跨省全国优质机会
         return GeoTierLevel.TIER4_REMOTE_OR_NATIONAL, 999.0, {
-            "min_score": 90,
-            "priority_bonus": -5,
-            "salary_ratio": 1.25
+            "min_score": 88,
+            "priority_bonus": 0,
+            "salary_ratio": 1.30,
+            "desc": "Tier 4: 全国一线重点/远程"
         }
 
     def get_custom_inquiries_for_job(self, job_title: str, company_name: str, jd_text: str) -> List[str]:

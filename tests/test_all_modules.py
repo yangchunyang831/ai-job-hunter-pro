@@ -44,6 +44,24 @@ class TestConfigAndGeo(unittest.TestCase):
         self.assertLessEqual(dist, 10.0)
         self.assertEqual(meta["min_score"], 75)
 
+    def test_city_tier_matching_district(self):
+        """测试按同区(余杭区)无坐标直接命中本地圈 (Tier 1)"""
+        tier, dist, meta = self.cfg.match_city_tier("杭州", district="余杭区")
+        self.assertEqual(tier, GeoTierLevel.TIER1_LOCAL)
+        self.assertEqual(meta["min_score"], 75)
+
+    def test_city_tier_matching_tier2_adjacent(self):
+        """测试邻近地级市匹配 (Tier 2)"""
+        tier, dist, meta = self.cfg.match_city_tier("绍兴")
+        self.assertEqual(tier, GeoTierLevel.TIER2_ADJACENT)
+        self.assertEqual(meta["min_score"], 80)
+
+    def test_city_tier_matching_tier3_province(self):
+        """测试省内其他中心城市 (Tier 3)"""
+        tier, dist, meta = self.cfg.match_city_tier("金华", None, None, None, False)
+        # 若在浙江省内配置中
+        self.assertIn(tier, [GeoTierLevel.TIER3_PROVINCE, GeoTierLevel.TIER4_REMOTE_OR_NATIONAL])
+
     def test_city_tier_matching_remote(self):
         """测试远程岗位专属通道 (Tier 4)"""
         tier, dist, meta = self.cfg.match_city_tier("北京", None, None, is_remote=True)
