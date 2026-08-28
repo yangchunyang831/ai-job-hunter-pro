@@ -208,10 +208,34 @@ def start_debug_chrome():
         console.print("[bold red]⚠️ Chrome 已调用启动，但端口 9222 尚未响应。如果已开启其他 Chrome 窗口，请先全部关闭后再试。[/bold red]")
 
 
+def start_gui_server(port: int = 8765):
+    """启动本地 Web GUI 控制中台并自动打开浏览器"""
+    import uvicorn
+    import webbrowser
+    import threading
+    import time
+
+    url = f"http://127.0.0.1:{port}"
+    console.print(Panel(
+        f"[bold green]🚀 AI Job Hunter Pro 可视化控制台正在启动...[/bold green]\n\n"
+        f"👉 浏览器访问地址: [bold cyan]{url}[/bold cyan]\n"
+        f"👉 正在自动为您调起默认浏览器...",
+        title="Web GUI Server"
+    ))
+
+    def open_browser():
+        time.sleep(1.2)
+        webbrowser.open(url)
+
+    threading.Thread(target=open_browser, daemon=True).start()
+    uvicorn.run("src.web.app:app", host="127.0.0.1", port=port, log_level="warning")
+
+
 def main():
     parser = argparse.ArgumentParser(description="AI Agent 智能求职系统 CLI")
-    parser.add_argument("action", choices=["test-config", "start-chrome", "run", "scan-only", "stats"], help="要执行的操作")
+    parser.add_argument("action", choices=["test-config", "start-chrome", "gui", "run", "scan-only", "stats"], help="要执行的操作")
     parser.add_argument("--max-apply", type=int, default=35, help="单日最大投递数量限制")
+    parser.add_argument("--port", type=int, default=8765, help="GUI 服务端口 (默认 8765)")
     
     args = parser.parse_args()
     
@@ -219,6 +243,8 @@ def main():
         test_config()
     elif args.action == "start-chrome":
         start_debug_chrome()
+    elif args.action == "gui":
+        start_gui_server(port=args.port)
     elif args.action == "run":
         run_pipeline(dry_run=False, max_apply=args.max_apply)
     elif args.action == "scan-only":

@@ -71,9 +71,17 @@ chrome.exe --remote-debugging-port=9222 --user-data-dir="C:\chrome_debug_profile
 2. `config/cities.yaml`：填入你的居住地坐标与目标城市辐射规则。
 3. `config/inquiry_templates.yaml`：配置你想让 AI 代问的问题。
 
-### 4. 使用项目专属虚拟环境 (.venv) 运行
-本项目内置了独立的 `.venv` 虚拟环境，直接运行以下命令即可：
+### 4. 使用项目专属虚拟环境 (.venv) 与 GUI 运行
+本项目内置了独立的 `.venv` 虚拟环境与 **高颜值可视化 Web GUI 控制中台**：
 
+```powershell
+# 🌟 启动 Web GUI 交互控制中台 (推荐！浏览器自动打开 http://127.0.0.1:8765)
+.\.venv\Scripts\python main.py gui
+
+# 也可以直接双击项目根目录下的 start_gui.bat 一键启动！
+```
+
+#### 也可以使用纯命令行模式：
 ```powershell
 # 诊断与配置校验
 .\.venv\Scripts\python main.py test-config
@@ -84,7 +92,7 @@ chrome.exe --remote-debugging-port=9222 --user-data-dir="C:\chrome_debug_profile
 # 全自动运行 (限制单日最多投递 35 个)
 .\.venv\Scripts\python main.py run --max-apply 35
 
-# 运行全套自动化测试
+# 运行全套自动化测试 (17 项测试)
 .\.venv\Scripts\python -m unittest discover -s tests -p "test_*.py"
 ```
 
