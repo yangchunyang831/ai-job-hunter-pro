@@ -160,18 +160,93 @@ class CDPBrowserController:
 
         return self.search_page
 
-    def scan_jobs_page(self, query: str, city_code: str = "101210100") -> Generator[RawJobCard, None, None]:
+    def build_boss_url(
+        self,
+        search_mode: str = "recommend",
+        query: Optional[str] = None,
+        city_code: str = "101210100",
+        filters: Optional[Dict[str, Any]] = None,
+        page_num: int = 1
+    ) -> str:
         """
-        导航至 BOSS 直聘搜索页并提取岗位卡片数据 (支持多重选择器、前台激活与 URL 编码)
+        根据检索模式与多维筛选矩阵动态生成 BOSS 直聘标准 URL
         """
         import urllib.parse
 
+        filters = filters or {}
+        
+        # 1. 智能推荐流模式 (无需输入任何关键词，BOSS 千人千面算法专属推荐)
+        if search_mode == "recommend":
+            base = "https://www.zhipin.com/web/geek/job-recommend"
+            params = []
+            if city_code and city_code != "100010000":
+                params.append(f"city={city_code}")
+            if params:
+                return f"{base}?{'&'.join(params)}"
+            return base
+
+        # 2. 条件筛选池 / 关键词检索模式
+        base = "https://www.zhipin.com/web/geek/job"
+        params = [f"city={city_code}"]
+
+        if query and query.strip():
+            params.append(f"query={urllib.parse.quote(query.strip())}")
+
+        exp = filters.get("experience", [])
+        if exp:
+            exp_val = ",".join(exp) if isinstance(exp, list) else str(exp)
+            params.append(f"experience={exp_val}")
+
+        deg = filters.get("degree", [])
+        if deg:
+            deg_val = ",".join(deg) if isinstance(deg, list) else str(deg)
+            params.append(f"degree={deg_val}")
+
+        scale = filters.get("scale", [])
+        if scale:
+            scale_val = ",".join(scale) if isinstance(scale, list) else str(scale)
+            params.append(f"scale={scale_val}")
+
+        stage = filters.get("stage", [])
+        if stage:
+            stage_val = ",".join(stage) if isinstance(stage, list) else str(stage)
+            params.append(f"stage={stage_val}")
+
+        salary = filters.get("salary", [])
+        if salary:
+            salary_val = ",".join(salary) if isinstance(salary, list) else str(salary)
+            params.append(f"salary={salary_val}")
+
+        job_type = filters.get("job_type", "1901")
+        if job_type:
+            params.append(f"jobType={job_type}")
+
+        if page_num > 1:
+            params.append(f"page={page_num}")
+
+        return f"{base}?{'&'.join(params)}"
+
+    def scan_jobs_page(
+        self,
+        query: Optional[str] = None,
+        city_code: str = "101210100",
+        search_mode: str = "recommend",
+        filters: Optional[Dict[str, Any]] = None,
+        page_num: int = 1
+    ) -> Generator[RawJobCard, None, None]:
+        """
+        导航至 BOSS 直聘岗位池（支持智能推荐、条件筛选池与关键词搜索）并提取岗位卡片
+        """
         page = self._get_or_create_search_page()
 
-        # URL 编码防止中文和空格破坏检索参数
-        encoded_query = urllib.parse.quote(query.strip())
-        search_url = f"https://www.zhipin.com/web/geek/job?query={encoded_query}&city={city_code}"
-        logger.info(f"Navigating to: {search_url}")
+        search_url = self.build_boss_url(
+            search_mode=search_mode,
+            query=query,
+            city_code=city_code,
+            filters=filters,
+            page_num=page_num
+        )
+        logger.info(f"Navigating to [{search_mode}]: {search_url}")
         
         try:
             page.goto(search_url, wait_until="domcontentloaded", timeout=25000)

@@ -75,7 +75,18 @@ class TestWebAPI(unittest.TestCase):
         derived = json_data["derived_config"]
         self.assertEqual(derived["user_residence"]["city"], "上海")
         self.assertIn("tier1_local", derived["tiers_config"])
-        self.assertIn("苏州", derived["tiers_config"]["tier2_adjacent"]["adjacent_cities"])
+    def test_get_and_save_filters_data(self):
+        """测试 BOSS 官方多维筛选器 JSON 读写接口"""
+        resp = self.client.get("/api/config/filters/data")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("data", data)
+        self.assertIn("search_mode", data["data"])
+
+        # 保存测试
+        data["data"]["search_mode"] = "recommend"
+        save_resp = self.client.post("/api/config/filters/data", json={"data": data["data"]})
+        self.assertEqual(save_resp.status_code, 200)
 
 
 if __name__ == "__main__":

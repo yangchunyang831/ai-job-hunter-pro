@@ -141,6 +141,7 @@ async def get_jobs_list(limit: int = 50):
 # ==========================================
 CONFIG_FILES = {
     "cities": "cities.yaml",
+    "filters": "candidate_profile.yaml",
     "profile": "candidate_profile.yaml",
     "inquiries": "inquiry_templates.yaml",
     "blacklist": "blacklist.yaml"
@@ -166,6 +167,10 @@ async def get_config_data(config_name: str):
     cfg_path = Path(__file__).resolve().parent.parent.parent / "config" / CONFIG_FILES[config_name]
     with open(cfg_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
+
+    if config_name == "filters":
+        return {"name": config_name, "data": data.get("boss_filters", {})}
+
     return {"name": config_name, "data": data}
 
 
@@ -199,10 +204,19 @@ async def save_config_data(config_name: str, req: ConfigDataUpdateRequest):
         raise HTTPException(status_code=404, detail="Config not found")
     
     cfg_path = Path(__file__).resolve().parent.parent.parent / "config" / CONFIG_FILES[config_name]
+    
+    if config_name == "filters":
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            full_data = yaml.safe_load(f) or {}
+        full_data["boss_filters"] = req.data
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            yaml.dump(full_data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        return {"status": "success", "message": "BOSS 官方多维筛选器已成功保存生效！"}
+
     with open(cfg_path, "w", encoding="utf-8") as f:
         yaml.dump(req.data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
         
-    return {"status": "success", "message": f"{config_name} 可视化空间辐射策略已成功保存生效！"}
+    return {"status": "success", "message": f"{config_name} 可视化策略已成功保存生效！"}
 
 
 class ResolveSpatialRequest(BaseModel):

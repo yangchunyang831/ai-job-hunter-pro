@@ -128,47 +128,70 @@ def run_pipeline(dry_run: bool = False, max_apply: int = 30):
         if not city_targets:
             city_targets = [(f"{home_city} (主城市)", "101210100")]
 
+        profile = cfg.profile_config
+        boss_filters = profile.get("boss_filters", {})
+        search_mode = boss_filters.get("search_mode", "recommend")
+        roles = profile.get("basics", {}).get("target_roles", ["AI Agent工程师"])
+
         high_match_results = []
         scanned_count = 0
 
-        for c_name, c_code in city_targets:
-            for role in roles:
-                console.print(f"\n🔍 正在检索城市【{c_name}】职位关键词: [bold cyan]{role}[/bold cyan] ...")
+        def _scan_and_evaluate_jobs(job_generator, location_name):
+            nonlocal scanned_count
+            for job in job_generator:
+                scanned_count += 1
                 
-                for job in controller.scan_jobs_page(query=role, city_code=c_code):
-                    scanned_count += 1
+                # 检查冷却期
+                if db.is_job_applied_recently(job.job_id):
+                    logger.info(f"岗位 {job.company_name} - {job.job_title} 在冷却期内，跳过。")
+                    continue
+
+                # 评估打分
+                result = engine.evaluate_job_with_llm(job)
+            
+                job_dict = {**job.dict(), "distance_km": result.distance_km, "geo_tier": result.tier_level.value}
+                if result.passed:
+                    console.print(f"✅ [bold green]命中优质岗位[/bold green]: 【{job.company_name}】{job.job_title} ({job.salary_raw}) | 得分: {result.score} [{result.tier_level.value}]")
+                    console.print(f"   💬 打招呼语: [italic]{result.custom_greeting}[/italic]")
                     
-                    # 检查冷却期
-                    if db.is_job_applied_recently(job.job_id):
-                        logger.info(f"岗位 {job.company_name} - {job.job_title} 在冷却期内，跳过。")
-                        continue
-
-                    # 评估打分
-                    result = engine.evaluate_job_with_llm(job)
-                
-                    job_dict = {**job.dict(), "distance_km": result.distance_km, "geo_tier": result.tier_level.value}
-                    if result.passed:
-                        console.print(f"✅ [bold green]命中优质岗位[/bold green]: 【{job.company_name}】{job.job_title} ({job.salary_raw}) | 得分: {result.score} [{result.tier_level.value}]")
-                        console.print(f"   💬 打招呼语: [italic]{result.custom_greeting}[/italic]")
-                        
-                        if not dry_run:
-                            # 执行点击沟通
-                            success = controller.send_initial_greeting(result.custom_greeting or "")
-                            if success:
-                                db.record_job_result(job_dict, "APPLIED", result.score, "LLM匹配通过", result.custom_greeting)
-                                db.increment_today_apply_count()
-                                high_match_results.append({"company": job.company_name, "title": job.job_title, "salary": job.salary_raw, "score": result.score})
-                                
-                                if db.get_today_apply_count() >= max_apply:
-                                    console.print("[bold red]已达到单日投递配额上限，停止检索！[/bold red]")
-                                    break
-                        else:
-                            db.record_job_result(job_dict, "CONSIDER", result.score, "Dry-Run演练通过", result.custom_greeting)
+                    if not dry_run:
+                        # 执行点击沟通
+                        success = controller.send_initial_greeting(result.custom_greeting or "")
+                        if success:
+                            db.record_job_result(job_dict, "APPLIED", result.score, "LLM匹配通过", result.custom_greeting)
+                            db.increment_today_apply_count()
+                            high_match_results.append({"company": job.company_name, "title": job.job_title, "salary": job.salary_raw, "score": result.score})
+                            
+                            if db.get_today_apply_count() >= max_apply:
+                                console.print("[bold red]已达到单日投递配额上限，停止检索！[/bold red]")
+                                break
                     else:
-                        logger.info(f"❌ 淘汰 【{job.company_name}】{job.job_title} | 原因: {result.rejection_reason}")
-                        db.record_job_result(job_dict, "REJECTED", result.score, result.rejection_reason or "")
+                        db.record_job_result(job_dict, "CONSIDER", result.score, "Dry-Run演练通过", result.custom_greeting)
+                else:
+                    logger.info(f"❌ 淘汰 【{job.company_name}】{job.job_title} | 原因: {result.rejection_reason}")
+                    db.record_job_result(job_dict, "REJECTED", result.score, result.rejection_reason or "")
 
-                    controller.human_delay(3.0, 6.0)
+                controller.human_delay(3.0, 6.0)
+
+        for c_name, c_code in city_targets:
+            # 1. 智能推荐流模式 (无需输入搜索词，BOSS 官方算法智能千人千面推荐)
+            if search_mode == "recommend":
+                console.print(f"\n🎯 [bold magenta]【BOSS 智能推荐流】[/bold magenta] 正在扫描【{c_name}】与您画像契合的精选岗位...")
+                job_stream = controller.scan_jobs_page(search_mode="recommend", city_code=c_code, filters=boss_filters)
+                _scan_and_evaluate_jobs(job_stream, c_name)
+
+            # 2. 条件筛选池模式 (纯多维筛选，无需关键词，按学历/经验/薪资/规模拉取全部岗位)
+            elif search_mode == "filter_pool":
+                console.print(f"\n⚡ [bold cyan]【BOSS 条件筛选池】[/bold cyan] 正在全量检索【{c_name}】多维筛选岗位...")
+                job_stream = controller.scan_jobs_page(search_mode="filter_pool", city_code=c_code, filters=boss_filters)
+                _scan_and_evaluate_jobs(job_stream, c_name)
+
+            # 3. 关键词定向搜索模式
+            else:
+                for role in roles:
+                    console.print(f"\n🔍 正在定向检索城市【{c_name}】职位关键词: [bold cyan]{role}[/bold cyan] ...")
+                    job_stream = controller.scan_jobs_page(search_mode="keyword", query=role, city_code=c_code, filters=boss_filters)
+                    _scan_and_evaluate_jobs(job_stream, c_name)
 
         # 汇总通知
         notifier.send_daily_summary(scanned_count, len(high_match_results), high_match_results)

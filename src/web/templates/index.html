@@ -495,10 +495,164 @@
                                     </div>
                                 </div>
                             </div>
+                    </div>
+
+                    <!-- 2. BOSS 官方原生多维筛选矩阵交互中台 (selectedConfig === 'filters') -->
+                    <div v-else-if="selectedConfig === 'filters' && configViewMode === 'visual'"
+                        class="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 max-h-[calc(100vh-180px)]">
+                        
+                        <!-- 岗位发现模式选择 -->
+                        <div class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-indigo-500/30">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <span class="p-1.5 rounded-lg bg-indigo-600/30 text-indigo-400">
+                                        <i data-lucide="compass" class="w-4 h-4"></i>
+                                    </span>
+                                    <div>
+                                        <h3 class="text-sm font-bold text-white">岗位发现与匹配模式选择</h3>
+                                        <p class="text-xs text-slate-400">无需手动搜索具体岗位名称，系统可直接调用 BOSS 官方推荐算法千人千面扫描适配岗位！</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs mt-1">
+                                <!-- 模式 1: 智能推荐流 -->
+                                <div @click="filtersData.search_mode = 'recommend'"
+                                    class="p-4 rounded-xl border transition cursor-pointer flex flex-col gap-2"
+                                    :class="filtersData.search_mode === 'recommend' ? 'bg-indigo-600/20 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-800 hover:border-slate-700'">
+                                    <div class="flex items-center justify-between">
+                                        <span class="font-bold text-sm text-white flex items-center gap-1.5">
+                                            <span>🎯 智能推荐流</span>
+                                            <span class="px-1.5 py-0.2 rounded bg-indigo-500/30 text-indigo-300 text-[10px]">推荐</span>
+                                        </span>
+                                        <input type="radio" value="recommend" v-model="filtersData.search_mode" class="accent-indigo-500">
+                                    </div>
+                                    <p class="text-slate-400 text-[11px] leading-relaxed">
+                                        完全无需关键词！调用 BOSS 官方算法千人千面智能推荐，直接扫描契合您简历画像的所有精选岗位。
+                                    </p>
+                                </div>
+
+                                <!-- 模式 2: 条件筛选池 -->
+                                <div @click="filtersData.search_mode = 'filter_pool'"
+                                    class="p-4 rounded-xl border transition cursor-pointer flex flex-col gap-2"
+                                    :class="filtersData.search_mode === 'filter_pool' ? 'bg-indigo-600/20 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-800 hover:border-slate-700'">
+                                    <div class="flex items-center justify-between">
+                                        <span class="font-bold text-sm text-white flex items-center gap-1.5">
+                                            <span>⚡ 纯条件筛选池</span>
+                                        </span>
+                                        <input type="radio" value="filter_pool" v-model="filtersData.search_mode" class="accent-indigo-500">
+                                    </div>
+                                    <p class="text-slate-400 text-[11px] leading-relaxed">
+                                        无需职位词，直接按下方学历、经验、薪资、公司规模全量拉取符合硬性条件的全部技术岗位池。
+                                    </p>
+                                </div>
+
+                                <!-- 模式 3: 关键词定向搜索 -->
+                                <div @click="filtersData.search_mode = 'keyword'"
+                                    class="p-4 rounded-xl border transition cursor-pointer flex flex-col gap-2"
+                                    :class="filtersData.search_mode === 'keyword' ? 'bg-indigo-600/20 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-800 hover:border-slate-700'">
+                                    <div class="flex items-center justify-between">
+                                        <span class="font-bold text-sm text-white flex items-center gap-1.5">
+                                            <span>🔍 关键词定向搜索</span>
+                                        </span>
+                                        <input type="radio" value="keyword" v-model="filtersData.search_mode" class="accent-indigo-500">
+                                    </div>
+                                    <p class="text-slate-400 text-[11px] leading-relaxed">
+                                        针对在【个人简历画像】中设定的指定目标岗位关键词进行精确搜索并结合筛选器。
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- BOSS 官方原生多维筛选矩阵 -->
+                        <div class="glass rounded-2xl p-5 flex flex-col gap-4">
+                            <div class="flex items-center gap-2 text-sm font-bold text-white border-b border-slate-800/80 pb-3">
+                                <i data-lucide="sliders-horizontal" class="w-4 h-4 text-emerald-400"></i>
+                                <span>BOSS 直聘官方多维筛选过滤矩阵 (点击标签一键勾选)</span>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                                <!-- 1. 学历要求 -->
+                                <div class="flex flex-col gap-2 p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                                    <span class="font-bold text-slate-300">🎓 学历要求 (多选)</span>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <button v-for="d in degreeOptions" :key="d.code" @click="toggleFilterArray('degree', d.code)"
+                                            class="px-3 py-1.5 rounded-lg border text-xs transition cursor-pointer"
+                                            :class="hasFilterValue('degree', d.code) ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'">
+                                            {{ d.label }}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- 2. 工作经验 -->
+                                <div class="flex flex-col gap-2 p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                                    <span class="font-bold text-slate-300">💼 工作经验要求 (多选)</span>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <button v-for="e in expOptions" :key="e.code" @click="toggleFilterArray('experience', e.code)"
+                                            class="px-3 py-1.5 rounded-lg border text-xs transition cursor-pointer"
+                                            :class="hasFilterValue('experience', e.code) ? 'bg-sky-500/20 border-sky-500 text-sky-300 font-bold' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'">
+                                            {{ e.label }}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- 3. 薪资待遇范围 -->
+                                <div class="flex flex-col gap-2 p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                                    <span class="font-bold text-slate-300">💰 薪资待遇范围 (多选)</span>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <button v-for="s in salaryOptions" :key="s.code" @click="toggleFilterArray('salary', s.code)"
+                                            class="px-3 py-1.5 rounded-lg border text-xs transition cursor-pointer"
+                                            :class="hasFilterValue('salary', s.code) ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'">
+                                            {{ s.label }}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- 4. 公司规模门槛 -->
+                                <div class="flex flex-col gap-2 p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                                    <span class="font-bold text-slate-300">🏢 公司规模 (多选)</span>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <button v-for="sc in scaleOptions" :key="sc.code" @click="toggleFilterArray('scale', sc.code)"
+                                            class="px-3 py-1.5 rounded-lg border text-xs transition cursor-pointer"
+                                            :class="hasFilterValue('scale', sc.code) ? 'bg-purple-500/20 border-purple-500 text-purple-300 font-bold' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'">
+                                            {{ sc.label }}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- 5. 融资阶段 -->
+                                <div class="flex flex-col gap-2 p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                                    <span class="font-bold text-slate-300">📈 融资阶段 (多选)</span>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <button v-for="st in stageOptions" :key="st.code" @click="toggleFilterArray('stage', st.code)"
+                                            class="px-3 py-1.5 rounded-lg border text-xs transition cursor-pointer"
+                                            :class="hasFilterValue('stage', st.code) ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300 font-bold' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'">
+                                            {{ st.label }}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- 6. 求职类型 -->
+                                <div class="flex flex-col gap-2 p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                                    <span class="font-bold text-slate-300">👔 求职类型</span>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <button @click="filtersData.job_type = '1901'"
+                                            class="px-4 py-1.5 rounded-lg border text-xs transition cursor-pointer"
+                                            :class="filtersData.job_type === '1901' ? 'bg-indigo-600 border-indigo-500 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-400'">
+                                            全职
+                                        </button>
+                                        <button @click="filtersData.job_type = '1902'"
+                                            class="px-4 py-1.5 rounded-lg border text-xs transition cursor-pointer"
+                                            :class="filtersData.job_type === '1902' ? 'bg-indigo-600 border-indigo-500 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-400'">
+                                            兼职
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- 2. 通用 YAML 源码编辑器 (用于其他配置或高级模式) -->
+                    <!-- 3. 通用 YAML 源码编辑器 (用于高级代码模式) -->
                     <div v-else class="flex-1 glass rounded-2xl p-4 flex flex-col">
                         <textarea v-model="configYamlContent"
                             class="flex-1 w-full bg-slate-950/80 border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-200 focus:outline-none focus:border-indigo-500 selection:bg-indigo-500 leading-relaxed resize-none">
@@ -556,6 +710,7 @@
 
                 const configTypes = [
                     { key: 'cities', name: '📍 多城市空间辐射 (cities)' },
+                    { key: 'filters', name: '🎯 BOSS 官方多维筛选 (filters)' },
                     { key: 'profile', name: '👤 个人简历画像 (profile)' },
                     { key: 'inquiries', name: '❓ 追问与摸底引擎 (inquiries)' },
                     { key: 'blacklist', name: '🚫 避坑黑名单库 (blacklist)' }
@@ -567,7 +722,7 @@
                 const jobsList = ref([]);
                 const logs = ref([]);
 
-                // 空间辐射可视化交互数据
+                // 1. 空间辐射可视化交互数据
                 const presetCities = [
                     { name: '杭州 (余杭/西溪)', city: '杭州', district: '余杭区', address: '未来科技城/阿里西溪园区' },
                     { name: '上海 (浦东/张江)', city: '上海', district: '浦东新区', address: '张江高科技园区' },
@@ -594,6 +749,74 @@
                         tier4_remote_or_national: { salary_ratio: 1.30, min_score: 88, remote_job_bonus: 20 }
                     }
                 });
+
+                // 2. BOSS 官方多维筛选器数据
+                const degreeOptions = [
+                    { code: '202', label: '大专' },
+                    { code: '203', label: '本科' },
+                    { code: '204', label: '硕士' },
+                    { code: '205', label: '博士' }
+                ];
+
+                const expOptions = [
+                    { code: '102', label: '在校/应届' },
+                    { code: '103', label: '1-3年' },
+                    { code: '104', label: '3-5年' },
+                    { code: '105', label: '5-10年' },
+                    { code: '106', label: '10年以上' }
+                ];
+
+                const salaryOptions = [
+                    { code: '404', label: '10-20K' },
+                    { code: '405', label: '20-50K' },
+                    { code: '406', label: '50K以上' }
+                ];
+
+                const scaleOptions = [
+                    { code: '301', label: '0-20人' },
+                    { code: '302', label: '20-99人' },
+                    { code: '303', label: '100-499人' },
+                    { code: '304', label: '500-999人' },
+                    { code: '305', label: '1000-9999人' },
+                    { code: '306', label: '10000人以上' }
+                ];
+
+                const stageOptions = [
+                    { code: '401', label: '未融资' },
+                    { code: '402', label: '天使轮' },
+                    { code: '403', label: 'A轮' },
+                    { code: '404', label: 'B轮' },
+                    { code: '405', label: 'C轮' },
+                    { code: '406', label: 'D轮及以上' },
+                    { code: '407', label: '上市公司' },
+                    { code: '408', label: '不需要融资' }
+                ];
+
+                const filtersData = ref({
+                    search_mode: 'recommend',
+                    experience: ['104', '105'],
+                    degree: ['203', '204'],
+                    salary: ['405', '406'],
+                    scale: ['303', '304', '305', '306'],
+                    stage: ['405', '406', '407', '408'],
+                    job_type: '1901'
+                });
+
+                const hasFilterValue = (field, val) => {
+                    return Array.isArray(filtersData.value[field]) && filtersData.value[field].includes(val);
+                };
+
+                const toggleFilterArray = (field, val) => {
+                    if (!Array.isArray(filtersData.value[field])) {
+                        filtersData.value[field] = [];
+                    }
+                    const idx = filtersData.value[field].indexOf(val);
+                    if (idx >= 0) {
+                        filtersData.value[field].splice(idx, 1);
+                    } else {
+                        filtersData.value[field].push(val);
+                    }
+                };
 
                 const isTierEnabled = (tierKey) => {
                     return citiesData.value.enabled_tiers?.includes(tierKey) || false;
@@ -695,10 +918,11 @@
                         if (name === 'cities') {
                             const dataRes = await fetch(`/api/config/cities/data`);
                             const json = await dataRes.json();
-                            citiesData.value = json.data || { active_cities: [], cities: {} };
-                            if (citiesData.value.active_cities?.length > 0 && !citiesData.value.cities[currentCityKey.value]) {
-                                currentCityKey.value = citiesData.value.active_cities[0];
-                            }
+                            citiesData.value = json.data || {};
+                        } else if (name === 'filters') {
+                            const dataRes = await fetch(`/api/config/filters/data`);
+                            const json = await dataRes.json();
+                            filtersData.value = json.data || { search_mode: 'recommend', experience: [], degree: [], salary: [], scale: [], stage: [], job_type: '1901' };
                         }
                         const res = await fetch(`/api/config/${name}`);
                         const data = await res.json();
@@ -721,6 +945,19 @@
                             if (res.ok) {
                                 alert(data.message || '多城市空间辐射策略已成功保存生效！');
                                 loadConfig('cities');
+                            } else {
+                                alert(data.detail || '保存失败');
+                            }
+                        } else if (selectedConfig.value === 'filters' && configViewMode.value === 'visual') {
+                            const res = await fetch(`/api/config/filters/data`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ data: filtersData.value })
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                                alert(data.message || 'BOSS 官方多维筛选器已成功保存生效！');
+                                loadConfig('filters');
                             } else {
                                 alert(data.detail || '保存失败');
                             }
@@ -823,6 +1060,14 @@
                     autoDeriveSpatial,
                     addAdjacentCity,
                     removeAdjacentCity,
+                    degreeOptions,
+                    expOptions,
+                    salaryOptions,
+                    scaleOptions,
+                    stageOptions,
+                    filtersData,
+                    hasFilterValue,
+                    toggleFilterArray,
                     jobsList,
                     logs,
                     fetchJobs,
