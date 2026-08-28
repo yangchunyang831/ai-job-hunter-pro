@@ -125,7 +125,10 @@ class CDPBrowserController:
         import urllib.parse
 
         if not self.search_page or self.search_page.is_closed():
-            self.search_page = self.context.new_page()
+            if len(self.context.pages) > 0:
+                self.search_page = self.context.pages[0]
+            else:
+                self.search_page = self.context.new_page()
 
         # URL 编码防止中文和空格破坏检索参数
         encoded_query = urllib.parse.quote(query.strip())
@@ -133,11 +136,17 @@ class CDPBrowserController:
         logger.info(f"Navigating to: {search_url}")
         
         try:
-            self.search_page.goto(search_url, wait_until="domcontentloaded", timeout=15000)
+            self.search_page.goto(search_url, wait_until="domcontentloaded", timeout=20000)
         except Exception as e:
-            logger.warning(f"页面加载超时或中断: {e}")
+            logger.warning(f"页面加载通知: {e}")
 
         self.human_delay(1.5, 3.0)
+
+        # 检查是否跳转到登录或验证页
+        if "login" in self.search_page.url:
+            logger.warning("⚠️ 当前页面跳转至登录页，请在 Chrome 窗口中使用手机 BOSS直聘 App 扫码登录！")
+            self.human_delay(3.0, 5.0)
+
         self.check_and_handle_captcha(self.search_page)
 
         # 模拟真实鼠标滚轮加载更多动态数据

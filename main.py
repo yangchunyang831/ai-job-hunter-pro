@@ -125,28 +125,28 @@ def run_pipeline(dry_run: bool = False, max_apply: int = 30):
                     # 评估打分
                     result = engine.evaluate_job_with_llm(job)
                 
-                if result.passed:
-                    console.print(f"✅ [bold green]命中优质岗位[/bold green]: 【{job.company_name}】{job.job_title} ({job.salary_raw}) | 得分: {result.score} [{result.tier_level.value}]")
-                    console.print(f"   💬 打招呼语: [italic]{result.custom_greeting}[/italic]")
-                    
-                    if not dry_run:
-                        # 执行点击沟通
-                        success = controller.send_initial_greeting(result.custom_greeting or "")
-                        if success:
-                            db.record_job_result(job.dict(), "APPLIED", result.score, "LLM匹配通过", result.custom_greeting)
-                            db.increment_today_apply_count()
-                            high_match_results.append({"company": job.company_name, "title": job.job_title, "salary": job.salary_raw, "score": result.score})
-                            
-                            if db.get_today_apply_count() >= max_apply:
-                                console.print("[bold red]已达到单日投递配额上限，停止检索！[/bold red]")
-                                break
+                    if result.passed:
+                        console.print(f"✅ [bold green]命中优质岗位[/bold green]: 【{job.company_name}】{job.job_title} ({job.salary_raw}) | 得分: {result.score} [{result.tier_level.value}]")
+                        console.print(f"   💬 打招呼语: [italic]{result.custom_greeting}[/italic]")
+                        
+                        if not dry_run:
+                            # 执行点击沟通
+                            success = controller.send_initial_greeting(result.custom_greeting or "")
+                            if success:
+                                db.record_job_result(job.dict(), "APPLIED", result.score, "LLM匹配通过", result.custom_greeting)
+                                db.increment_today_apply_count()
+                                high_match_results.append({"company": job.company_name, "title": job.job_title, "salary": job.salary_raw, "score": result.score})
+                                
+                                if db.get_today_apply_count() >= max_apply:
+                                    console.print("[bold red]已达到单日投递配额上限，停止检索！[/bold red]")
+                                    break
+                        else:
+                            db.record_job_result(job.dict(), "CONSIDER", result.score, "Dry-Run演练通过", result.custom_greeting)
                     else:
-                        db.record_job_result(job.dict(), "CONSIDER", result.score, "Dry-Run演练通过", result.custom_greeting)
-                else:
-                    logger.info(f"❌ 淘汰 【{job.company_name}】{job.job_title} | 原因: {result.rejection_reason}")
-                    db.record_job_result(job.dict(), "REJECTED", result.score, result.rejection_reason or "")
+                        logger.info(f"❌ 淘汰 【{job.company_name}】{job.job_title} | 原因: {result.rejection_reason}")
+                        db.record_job_result(job.dict(), "REJECTED", result.score, result.rejection_reason or "")
 
-                controller.human_delay(3.0, 6.0)
+                    controller.human_delay(3.0, 6.0)
 
         # 汇总通知
         notifier.send_daily_summary(scanned_count, len(high_match_results), high_match_results)
