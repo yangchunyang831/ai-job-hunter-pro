@@ -72,8 +72,13 @@ class TestDatabaseStorage(unittest.TestCase):
         self.db = DatabaseManager(db_path=self.temp_db.name)
 
     def tearDown(self):
-        if os.path.exists(self.temp_db.name):
-            os.remove(self.temp_db.name)
+        import gc
+        gc.collect()
+        try:
+            if os.path.exists(self.temp_db.name):
+                os.remove(self.temp_db.name)
+        except Exception:
+            pass
 
     def test_daily_apply_quota(self):
         """测试每日投递计数递增"""

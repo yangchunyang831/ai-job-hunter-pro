@@ -1,5 +1,6 @@
 """Notification center for Feishu Webhook, WeChat PushPlus, and console alerts."""
 import os
+import sys
 import json
 import logging
 import httpx
@@ -51,7 +52,13 @@ class NotificationManager:
 
     def _dispatch(self, title: str, markdown_content: str, alert_type: str = "INFO"):
         """分发消息至各渠道"""
-        print(f"\n[{alert_type}] {title}\n{markdown_content}\n")
+        msg_str = f"\n[{alert_type}] {title}\n{markdown_content}\n"
+        try:
+            print(msg_str)
+        except UnicodeEncodeError:
+            # 在 Windows GBK 终端下安全回退输出
+            clean_str = msg_str.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8")
+            print(clean_str)
         
         # 1. 飞书 Webhook 交互卡片
         if self.feishu_webhook:

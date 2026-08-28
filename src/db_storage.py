@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 
+from contextlib import contextmanager
+
+
 class DatabaseManager:
     """本地 SQLite 数据库管理"""
     def __init__(self, db_path: Optional[str] = None):
@@ -18,10 +21,14 @@ class DatabaseManager:
             
         self._init_db()
 
-    def _get_conn(self) -> sqlite3.Connection:
+    @contextmanager
+    def _get_conn(self):
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def _init_db(self):
         """初始化数据表"""
