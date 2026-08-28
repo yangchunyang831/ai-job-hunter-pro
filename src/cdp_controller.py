@@ -118,17 +118,55 @@ class CDPBrowserController:
         "全国": "100010000"
     }
 
+    def _get_or_create_search_page(self) -> Page:
+        """获取或定位最适合的 BOSS 直聘前台页面，并清理多余的 about:blank 标签页"""
+        target_page = None
+        
+        # 1. 优先寻找已经打开 BOSS 直聘的标签页
+        for p in self.context.pages:
+            if "zhipin.com" in p.url:
+                target_page = p
+                break
+        
+        # 2. 若没有，寻找任意非 about:blank 标签页
+        if not target_page:
+            for p in self.context.pages:
+                if p.url != "about:blank":
+                    target_page = p
+                    break
+
+        # 3. 若仍没有，复用第 0 个标签页或新建
+        if not target_page or target_page.is_closed():
+            if len(self.context.pages) > 0:
+                target_page = self.context.pages[0]
+            else:
+                target_page = self.context.new_page()
+
+        self.search_page = target_page
+
+        # 4. 关闭其他多余的 about:blank 空白标签页，防止视觉干扰
+        for p in list(self.context.pages):
+            if p != self.search_page and p.url == "about:blank":
+                try:
+                    p.close()
+                except Exception:
+                    pass
+
+        # 5. 极其关键：将操作标签页激活到最前台，防止 Chrome 后台节流导致 React 停止渲染
+        try:
+            self.search_page.bring_to_front()
+        except Exception:
+            pass
+
+        return self.search_page
+
     def scan_jobs_page(self, query: str, city_code: str = "101210100") -> Generator[RawJobCard, None, None]:
         """
-        导航至 BOSS 直聘搜索页并提取岗位卡片数据 (支持多重选择器与 URL 编码)
+        导航至 BOSS 直聘搜索页并提取岗位卡片数据 (支持多重选择器、前台激活与 URL 编码)
         """
         import urllib.parse
 
-        if not self.search_page or self.search_page.is_closed():
-            if len(self.context.pages) > 0:
-                self.search_page = self.context.pages[0]
-            else:
-                self.search_page = self.context.new_page()
+        page = self._get_or_create_search_page()
 
         # URL 编码防止中文和空格破坏检索参数
         encoded_query = urllib.parse.quote(query.strip())
@@ -136,41 +174,46 @@ class CDPBrowserController:
         logger.info(f"Navigating to: {search_url}")
         
         try:
-            self.search_page.goto(search_url, wait_until="domcontentloaded", timeout=20000)
+            page.goto(search_url, wait_until="domcontentloaded", timeout=25000)
+            page.bring_to_front()
         except Exception as e:
             logger.warning(f"页面加载通知: {e}")
 
-        self.human_delay(1.5, 3.0)
+        self.human_delay(2.0, 4.0)
 
         # 检查是否跳转到登录或验证页
-        if "login" in self.search_page.url:
-            logger.warning("⚠️ 当前页面跳转至登录页，请在 Chrome 窗口中使用手机 BOSS直聘 App 扫码登录！")
+        if "login" in page.url:
+            logger.warning("⚠️ 当前页面处于未登录状态，请在 Chrome 窗口中使用手机 BOSS直聘 App 扫码登录！")
             self.human_delay(3.0, 5.0)
 
-        self.check_and_handle_captcha(self.search_page)
+        self.check_and_handle_captcha(page)
 
-        # 模拟真实鼠标滚轮加载更多动态数据
+        # 模拟真实鼠标滚轮向下滚动以触发数据懒加载
         try:
-            self.search_page.mouse.wheel(0, random.randint(300, 600))
+            page.mouse.wheel(0, random.randint(400, 800))
         except Exception:
             pass
-        self.human_delay(1.0, 2.0)
+        self.human_delay(1.5, 3.0)
 
         # 多重选择器兼容策略
         card_selectors = [
             ".job-card-wrapper",
             ".job-card-box",
+            ".job-list-box li",
             "ul.job-list-box > li",
             "li.job-card-wrapper",
-            "[class*='job-card']",
-            ".job-primary"
+            "[class*='job-card-wrapper']",
+            "[class*='job-card-box']",
+            ".job-primary",
+            ".job-card-body",
+            ".job-card-left"
         ]
 
         # 等待列表元素渲染
         try:
-            self.search_page.wait_for_selector(
+            page.wait_for_selector(
                 ", ".join(card_selectors),
-                timeout=6000
+                timeout=8000
             )
         except Exception:
             logger.info("等待列表选择器渲染完成...")
@@ -178,9 +221,10 @@ class CDPBrowserController:
         job_elements = []
         for sel in card_selectors:
             try:
-                elems = self.search_page.query_selector_all(sel)
+                elems = page.query_selector_all(sel)
                 if elems and len(elems) > 0:
                     job_elements = elems
+                    logger.info(f"成功匹配到选择器 [{sel}]，共 {len(elems)} 个岗位卡片")
                     break
             except Exception:
                 pass
@@ -222,10 +266,10 @@ class CDPBrowserController:
                 except Exception:
                     pass
                 self.human_delay(0.8, 1.5)
-                self.check_and_handle_captcha(self.search_page)
+                self.check_and_handle_captcha(page)
 
                 # 提取 JD 详情
-                detail_sec = query_first(self.search_page, [
+                detail_sec = query_first(page, [
                     ".job-detail-section",
                     ".job-sec-text",
                     "[class*='job-detail']",
@@ -235,10 +279,10 @@ class CDPBrowserController:
                 ])
                 jd_text = detail_sec.inner_text().strip() if detail_sec else ""
 
-                hr_title_elem = query_first(self.search_page, [".boss-info-attr", "[class*='boss-info-attr']", ".boss-title"])
+                hr_title_elem = query_first(page, [".boss-info-attr", "[class*='boss-info-attr']", ".boss-title"])
                 hr_title = hr_title_elem.inner_text().strip() if hr_title_elem else "HR"
                 
-                hr_active_elem = query_first(self.search_page, [".boss-active-time", "[class*='boss-active-time']", ".active-time"])
+                hr_active_elem = query_first(page, [".boss-active-time", "[class*='boss-active-time']", ".active-time"])
                 hr_active = hr_active_elem.inner_text().strip() if hr_active_elem else "刚刚活跃"
 
                 # 构造唯一 ID
