@@ -2,6 +2,7 @@
 import time
 import random
 import logging
+import threading
 from typing import Optional, List, Dict, Any, Generator
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
 from src.schemas import RawJobCard
@@ -12,9 +13,10 @@ logger = logging.getLogger(__name__)
 
 class CDPBrowserController:
     """真实 Chrome CDP 浏览器控制器"""
-    def __init__(self, cdp_url: str = "http://127.0.0.1:9222", notifier: Optional[NotificationManager] = None):
+    def __init__(self, cdp_url: str = "http://127.0.0.1:9222", notifier: Optional[NotificationManager] = None, stop_event: Optional[threading.Event] = None):
         self.cdp_url = cdp_url
         self.notifier = notifier or NotificationManager()
+        self.stop_event = stop_event
         self._playwright = None
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
@@ -42,16 +44,22 @@ class CDPBrowserController:
             self._playwright.stop()
 
     def human_delay(self, min_s: float = 2.0, max_s: float = 4.5):
-        """拟人化随机停顿"""
-        time.sleep(random.uniform(min_s, max_s))
+        """拟人化随机停顿 (支持即时中断)"""
+        delay_time = random.uniform(min_s, max_s)
+        if self.stop_event:
+            self.stop_event.wait(delay_time)
+        else:
+            time.sleep(delay_time)
 
     def human_type(self, page: Page, selector: str, text: str):
         """模拟人类打字速度"""
         page.focus(selector)
         for char in text:
+            if self.stop_event and self.stop_event.is_set():
+                break
             page.keyboard.type(char, delay=random.randint(60, 160))
             if char in ["，", "。", "！", "？", "\n"]:
-                time.sleep(random.uniform(0.2, 0.4))
+                self.human_delay(0.2, 0.4)
 
     def check_and_handle_captcha(self, page: Page) -> bool:
         """检测滑块验证码并触发熔断"""
@@ -63,13 +71,22 @@ class CDPBrowserController:
             "[class*='dialog-captcha']"
         ]
         for sel in captcha_selectors:
-            elem = page.query_selector(sel)
-            if elem and elem.is_visible():
-                logger.warning("🚨 检测到滑块验证码弹窗！触发熔断保护！")
-                self.notifier.send_captcha_alert()
-                input(">>> 请在浏览器窗口手动完成验证码滑动，完成后按 [回车] 键继续...")
-                self.human_delay(2.0, 3.0)
-                return True
+            try:
+                elem = page.query_selector(sel)
+                if elem and elem.is_visible():
+                    logger.warning("🚨 检测到滑块验证码弹窗！触发熔断保护！")
+                    self.notifier.send_captcha_alert()
+                    # 轮询等待用户手动完成滑动，避免阻塞后台线程
+                    for _ in range(60):
+                        if self.stop_event and self.stop_event.is_set():
+                            break
+                        if not elem.is_visible():
+                            logger.info("✅ 验证码已解除，继续执行！")
+                            break
+                        self.human_delay(1.0, 1.0)
+                    return True
+            except Exception:
+                pass
         return False
 
     def scan_jobs_page(self, query: str, city_code: str = "101210100") -> Generator[RawJobCard, None, None]:
@@ -94,6 +111,9 @@ class CDPBrowserController:
         logger.info(f"Found {len(job_elements)} job cards on current page.")
 
         for card in job_elements:
+            if self.stop_event and self.stop_event.is_set():
+                logger.info("⏹ 收到停止指令，中断岗位扫描！")
+                break
             try:
                 # 提取列表级基本信息
                 title_elem = card.query_selector(".job-name")

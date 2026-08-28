@@ -370,8 +370,10 @@
 
                 const stopAgent = async () => {
                     try {
+                        status.value.is_running = false;
+                        status.value.current_mode = 'IDLE';
                         await fetch('/api/agent/stop', { method: 'POST' });
-                        fetchStatus();
+                        setTimeout(fetchStatus, 500);
                     } catch (e) {
                         console.error(e);
                     }

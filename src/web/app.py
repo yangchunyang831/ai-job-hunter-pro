@@ -199,7 +199,7 @@ def _run_agent_worker(dry_run: bool, max_apply: int):
     db = DatabaseManager()
     notifier = NotificationManager()
     engine = ScoringEngine(cfg)
-    controller = CDPBrowserController(notifier=notifier)
+    controller = CDPBrowserController(notifier=notifier, stop_event=state.stop_event)
 
     state.is_running = True
     state.current_mode = "SCAN_ONLY" if dry_run else "LIVE_APPLY"
@@ -277,10 +277,10 @@ async def start_agent_task(req: AgentStartRequest):
 
 @app.post("/api/agent/stop")
 async def stop_agent_task():
-    if not state.is_running:
-        return {"status": "not_running", "message": "当前没有正在运行的任务。"}
     state.stop_event.set()
-    return {"status": "stopping", "message": "已发送停止信号，Agent 将在完成当前动作后退出。"}
+    state.is_running = False
+    state.current_mode = "IDLE"
+    return {"status": "stopped", "message": "已成功向 Agent 发送停止指令，已立即终止！"}
 
 
 # ==========================================
