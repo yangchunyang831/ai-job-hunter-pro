@@ -1,0 +1,63 @@
+# 候选人标准画像与事实知识库 (Candidate Profile & Ground Truth Boundary)
+# 大模型在生成打招呼语与多轮回答时，严格基于本文件事实作答，杜绝幻觉
+
+basics:
+  name: "求职者"
+  target_roles:
+    - "AI Agent 工程师"
+    - "Python 后端开发专家"
+    - "全栈开发工程师"
+  years_of_experience: 4
+  education:
+    degree: "统招本科"
+    major: "计算机科学与技术"
+  current_status: "已离职，随时可到岗" # 或 "在职-考虑机会-1个月到岗"
+  notice_period_days: 0
+
+# 薪资预期基准 (单位: K/月，12-16薪)
+salary_expectations:
+  min_monthly_base_k: 22   # 最低底线，低于此值不投
+  target_monthly_base_k: 28 # 理想期望
+  accept_stock_options: true
+  min_acceptable_annual_k: 300
+
+# 核心技术栈掌握情况 (用于大模型打分与技术问答)
+skills:
+  languages:
+    - name: "Python"
+      level: "精通 (4年)"
+      frameworks: ["FastAPI", "Django", "Flask", "Asyncio"]
+    - name: "TypeScript / JavaScript"
+      level: "熟练"
+      frameworks: ["Vue 3", "React", "Node.js"]
+    - name: "Go / SQL"
+      level: "熟练"
+
+  ai_and_agents:
+    - "精通基于 LangGraph / AutoGen / CrewAI 的多智能体工作流设计与落地"
+    - "深入掌握 RAG 检索增强架构、向量数据库 (Chroma/Milvus) 与混合重排检索"
+    - "熟练掌握大模型微调 (LoRA/QLoRA) 与 Prompt 工程结构化输出控制"
+
+  engineering_and_devops:
+    - "精通 Playwright / CDP / nodriver 浏览器自动化与反爬对抗"
+    - "熟练使用 Docker / Kubernetes / CI/CD 自动化流水线"
+    - "熟练掌握 Redis、PostgreSQL、MySQL 高并发读写优化与缓存架构"
+
+# 亮点项目经验提炼 (用于生成极高回复率的定制打招呼语)
+highlight_projects:
+  - project_name: "企业级自主 AI Agent 自动化求职与客服工作流"
+    role: "核心架构师与独立开发者"
+    highlights:
+      - "基于 CDP 协议与浏览器沙箱，实现零封号的智能多轮会话调度系统"
+      - "利用 DeepSeek 结构化输出实现毫秒级 JD 语义打分与意图路由，回复率提升 3.5 倍"
+  - project_name: "千万级高并发爬虫与数据智能分析中台"
+    role: "后端技术负责人"
+    highlights:
+      - "设计分布式爬虫集群，成功攻克复杂滑块验证与设备指纹追踪"
+      - "支撑每日千万级清洗数据入库，系统可用性达 99.95%"
+
+# 事实底线与拒绝条件 (Deal Breakers)
+deal_breakers:
+  - "绝不接受劳务派遣、纯外包或驻场外派岗位"
+  - "不接受无底薪、纯提成制或单休/大小周企业"
+  - "不接受低于 20K 的薪资报价"

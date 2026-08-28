@@ -1,0 +1,108 @@
+# 多城市与四级空间地理辐射配置
+# 系统支持配置多个目标城市，每个城市独立定义锚点、辐射圈半径及薪资门槛
+
+active_cities:
+  - "hangzhou"
+  - "shanghai"
+  - "shenzhen"
+
+cities:
+  # 城市 1: 杭州 (作为主居住地示例)
+  hangzhou:
+    city_name: "杭州"
+    province: "浙江"
+    is_primary_residence: true
+    anchor:
+      name: "杭州未来科技城/阿里西溪园区附近"
+      latitude: 30.2796
+      longitude: 120.0253
+      district: "余杭区"
+    tiers:
+      # Tier 1: 10km 本地极限通勤圈 (家门口神仙通勤)
+      tier1_local_commute:
+        max_distance_km: 10.0
+        min_score_required: 75
+        salary_adjustment_ratio: 0.90   # 允许薪资略低 10%，享受零通勤优势
+        priority_bonus: 15
+        greeting_tone: "突出居住在附近、通勤极度稳定、可随时到面/到岗"
+
+      # Tier 2: 邻近核心地级市 / 重点产业圈
+      tier2_adjacent_metro:
+        adjacent_city_names: ["绍兴", "嘉兴", "湖州", "宁波"]
+        min_score_required: 80
+        salary_adjustment_ratio: 1.00
+        priority_bonus: 5
+        greeting_tone: "确认通勤与班车政策"
+
+      # Tier 3: 省内其他中心城市
+      tier3_province_wide:
+        min_score_required: 85
+        salary_adjustment_ratio: 1.15   # 需覆盖异地租房成本
+        priority_bonus: 0
+        require_company_scale_min: 100 # 必须为 100 人以上自研企业
+
+      # Tier 4: 全国优质机会与远程办公
+      tier4_nationwide_or_remote:
+        min_score_required: 88
+        salary_adjustment_ratio: 1.30   # 跨省搬迁需大幅溢价
+        remote_job_bonus: 20            # 命中远程/Remote标签直接加20分最高优先级
+
+  # 城市 2: 上海 (作为一线目标城市示例)
+  shanghai:
+    city_name: "上海"
+    province: "上海"
+    is_primary_residence: false
+    anchor:
+      name: "上海张江高科/浦东新区"
+      latitude: 31.2008
+      longitude: 121.5977
+      district: "浦东新区"
+    tiers:
+      tier1_local_commute:
+        max_distance_km: 12.0
+        min_score_required: 82
+        salary_adjustment_ratio: 1.00
+        priority_bonus: 10
+      tier2_adjacent_metro:
+        adjacent_city_names: ["昆山", "苏州"]
+        min_score_required: 82
+        salary_adjustment_ratio: 1.00
+        priority_bonus: 5
+      tier3_province_wide:
+        min_score_required: 85
+        salary_adjustment_ratio: 1.10
+        priority_bonus: 0
+      tier4_nationwide_or_remote:
+        min_score_required: 90
+        salary_adjustment_ratio: 1.25
+        remote_job_bonus: 20
+
+  # 城市 3: 深圳 (珠三角科技中心示例)
+  shenzhen:
+    city_name: "深圳"
+    province: "广东"
+    is_primary_residence: false
+    anchor:
+      name: "深圳南山科技园"
+      latitude: 22.5401
+      longitude: 113.9531
+      district: "南山区"
+    tiers:
+      tier1_local_commute:
+        max_distance_km: 10.0
+        min_score_required: 82
+        salary_adjustment_ratio: 1.00
+        priority_bonus: 10
+      tier2_adjacent_metro:
+        adjacent_city_names: ["东莞", "广州", "佛山"]
+        min_score_required: 82
+        salary_adjustment_ratio: 1.00
+        priority_bonus: 5
+      tier3_province_wide:
+        min_score_required: 85
+        salary_adjustment_ratio: 1.15
+        priority_bonus: 0
+      tier4_nationwide_or_remote:
+        min_score_required: 90
+        salary_adjustment_ratio: 1.25
+        remote_job_bonus: 20
