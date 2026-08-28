@@ -75,17 +75,40 @@ class TestWebAPI(unittest.TestCase):
         derived = json_data["derived_config"]
         self.assertEqual(derived["user_residence"]["city"], "上海")
         self.assertIn("tier1_local", derived["tiers_config"])
-    def test_get_and_save_filters_data(self):
-        """测试 BOSS 官方多维筛选器 JSON 读写接口"""
-        resp = self.client.get("/api/config/filters/data")
+    def test_get_and_save_profile_data(self):
+        """测试个人画像 JSON 读写接口"""
+        resp = self.client.get("/api/config/profile/data")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("data", data)
-        self.assertIn("search_mode", data["data"])
+        self.assertIn("basics", data["data"])
 
         # 保存测试
-        data["data"]["search_mode"] = "recommend"
-        save_resp = self.client.post("/api/config/filters/data", json={"data": data["data"]})
+        save_resp = self.client.post("/api/config/profile/data", json={"data": data["data"]})
+        self.assertEqual(save_resp.status_code, 200)
+
+    def test_get_and_save_inquiries_data(self):
+        """测试追问摸底配置 JSON 读写接口"""
+        resp = self.client.get("/api/config/inquiries/data")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("data", data)
+        self.assertIn("baseline_inquiries", data["data"])
+
+        # 保存测试
+        save_resp = self.client.post("/api/config/inquiries/data", json={"data": data["data"]})
+        self.assertEqual(save_resp.status_code, 200)
+
+    def test_get_and_save_blacklist_data(self):
+        """测试黑名单配置 JSON 读写接口"""
+        resp = self.client.get("/api/config/blacklist/data")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("data", data)
+        self.assertIn("outsourcing_companies", data["data"])
+
+        # 保存测试
+        save_resp = self.client.post("/api/config/blacklist/data", json={"data": data["data"]})
         self.assertEqual(save_resp.status_code, 200)
 
 

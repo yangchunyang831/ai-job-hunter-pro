@@ -1,96 +1,97 @@
-# 基础工作信息核实与职位类别/单岗位自定义追问模板配置
-
-# ==========================================
-# 1. 必查基础信息配置 (AI 必须在沟通平稳期摸清的底线)
-# ==========================================
 baseline_inquiries:
   enabled: true
-  max_questions_per_turn: 1  # 每次仅提 1 个问题，杜绝审讯感
-  
+  max_questions_per_turn: 1
   items:
-    # 维度 1: 薪资构成与年终奖
     salary_structure:
       priority: 1
-      key: "salary_structure"
-      question_prompt: "想向您了解一下，咱们岗位的薪资构成大概是怎样的呢？是否有固定的绩效考核比例或年终奖基数呀？"
-      target_slots: ["base_salary_ratio", "performance_ratio", "annual_months"]
-
-    # 维度 2: 试用期与社保公积金
+      key: salary_structure
+      question_prompt: 想向您了解一下，咱们岗位的薪资构成大概是怎样的呢？是否有固定的绩效考核比例或年终奖基数呀？
+      target_slots:
+      - base_salary_ratio
+      - performance_ratio
+      - annual_months
     probation_and_social:
       priority: 2
-      key: "probation_and_social"
-      question_prompt: "请问岗位试用期一般是几个月呢？入职首月的五险一金是按照全额基数足额缴纳吗？"
-      target_slots: ["probation_months", "probation_salary_ratio", "social_security_full"]
-
-    # 维度 3: 工作时间与加班考勤
+      key: probation_and_social
+      question_prompt: 请问岗位试用期一般是几个月呢？入职首月的五险一金是按照全额基数足额缴纳吗？
+      target_slots:
+      - probation_months
+      - probation_salary_ratio
+      - social_security_full
     work_hours:
       priority: 3
-      key: "work_hours"
-      question_prompt: "请问咱们平时团队的日常作息时间是怎样的呢？会有大小周或者固定加班的安排吗？"
-      target_slots: ["daily_hours", "weekend_policy", "overtime_compensation"]
-
-    # 维度 4: 业务属性 (自研 vs 外包)
+      key: work_hours
+      question_prompt: 请问咱们平时团队的日常作息时间是怎样的呢？会有大小周或者固定加班的安排吗？
+      target_slots:
+      - daily_hours
+      - weekend_policy
+      - overtime_compensation
     business_nature:
       priority: 4
-      key: "business_nature"
-      question_prompt: "了解咱们这个岗位负责的是公司内部自研的核心业务系统，还是给外部客户做项目交付/驻场呢？"
-      target_slots: ["is_inhouse", "is_outsourced", "is_onsite_stationed"]
-
-    # 维度 5: 常驻地点与出差频率
+      key: business_nature
+      question_prompt: 了解咱们这个岗位负责的是公司内部自研的核心业务系统，还是给外部客户做项目交付/驻场呢？
+      target_slots:
+      - is_inhouse
+      - is_outsourced
+      - is_onsite_stationed
     workplace_location:
       priority: 5
-      key: "workplace_location"
-      question_prompt: "请问日常办公是在 JD 上标注的园区工位吗？平时会有频繁跨城市出差的要求吗？"
-      target_slots: ["exact_office_location", "travel_frequency"]
-
-
-# ==========================================
-# 2. 职位类别级自定义追问模板 (Category Level)
-# ==========================================
+      key: workplace_location
+      question_prompt: 请问日常办公是在 JD 上标注的园区工位吗？平时会有频繁跨城市出差的要求吗？
+      target_slots:
+      - exact_office_location
+      - travel_frequency
 category_inquiry_templates:
-  # 类别 A: AI / 大模型 / Agent 工程师
   ai_agent_engineer:
-    category_name: "AI Agent / 大模型算法工程师"
-    matching_keywords: ["Agent", "大模型", "LLM", "Prompt", "RAG", "LangChain", "AIGC", "AI工程师"]
+    category_name: AI Agent / 大模型算法工程师
+    matching_keywords:
+    - Agent
+    - 大模型
+    - LLM
+    - Prompt
+    - RAG
+    - LangChain
+    - AIGC
+    - AI工程师
     questions:
-      - id: "ai_focus_area"
-        prompt: "请问咱们团队目前在大模型方向主要落地的是 RAG 智能体应用、工作流编排，还是垂直领域的模型微调/预训练呢？"
-      - id: "ai_model_stack"
-        prompt: "业务层目前主要是接入主流商业 API（如 DeepSeek/Claude），还是有自建私有化的开源模型（如 Qwen/Llama）算力集群呢？"
-      - id: "ai_business_stage"
-        prompt: "咱们该 AI 项目目前是已经有实际商业化付费用户，还是处于内部探索与快速验证阶段呢？"
-
-  # 类别 B: 后端开发 / 架构师
+    - id: ai_focus_area
+      prompt: 请问咱们团队目前在大模型方向主要落地的是 RAG 智能体应用、工作流编排，还是垂直领域的模型微调/预训练呢？
+    - id: ai_model_stack
+      prompt: 业务层目前主要是接入主流商业 API（如 DeepSeek/Claude），还是有自建私有化的开源模型（如 Qwen/Llama）算力集群呢？
+    - id: ai_business_stage
+      prompt: 咱们该 AI 项目目前是已经有实际商业化付费用户，还是处于内部探索与快速验证阶段呢？
   backend_architect:
-    category_name: "后端开发 / 架构师"
-    matching_keywords: ["Python后端", "Java", "Go", "后端架构", "服务端", "分布式"]
+    category_name: 后端开发 / 架构师
+    matching_keywords:
+    - Python后端
+    - Java
+    - Go
+    - 后端架构
+    - 服务端
+    - 分布式
     questions:
-      - id: "backend_qps_scale"
-        prompt: "请问咱们核心业务系统目前的并发 QPS 峰值和数据体量大概在什么量级呀？"
-      - id: "backend_tech_stack"
-        prompt: "底层服务主要采用微服务架构还是模块化单体？中间件主要是使用哪些（如 Redis, Kafka, K8s）？"
-
-  # 类别 C: 前端开发 / 全栈
+    - id: backend_qps_scale
+      prompt: 请问咱们核心业务系统目前的并发 QPS 峰值和数据体量大概在什么量级呀？
+    - id: backend_tech_stack
+      prompt: 底层服务主要采用微服务架构还是模块化单体？中间件主要是使用哪些（如 Redis, Kafka, K8s）？
   frontend_engineer:
-    category_name: "前端 / 全栈开发"
-    matching_keywords: ["前端", "Vue", "React", "TypeScript", "全栈"]
+    category_name: 前端 / 全栈开发
+    matching_keywords:
+    - 前端
+    - Vue
+    - React
+    - TypeScript
+    - 全栈
     questions:
-      - id: "frontend_framework"
-        prompt: "请问目前团队主力技术栈是 Vue3 还是 React 生态？是否有较重的数据可视化或自研组件库需求？"
-
-
-# ==========================================
-# 3. 单岗位 / 特定公司级覆写 (Job / Company Level)
-# ==========================================
+    - id: frontend_framework
+      prompt: 请问目前团队主力技术栈是 Vue3 还是 React 生态？是否有较重的数据可视化或自研组件库需求？
 job_specific_inquiries:
-  - company_keyword: "字节跳动"
-    custom_questions:
-      - "请问该岗位具体对应哪个业务线（如抖音、电商、商业化还是飞书）？团队目前的规模大概是多少人呢？"
-
-  - company_keyword: "阿里巴巴"
-    custom_questions:
-      - "请问目前岗位所在的具体部门与业务条线是什么呀？"
-
-  - job_title_keyword: "技术合伙人"
-    custom_questions:
-      - "请问目前的期权/股权激励机制以及核心团队的融资背景是怎样的呢？"
+- company_keyword: 字节跳动
+  custom_questions:
+  - 请问该岗位具体对应哪个业务线（如抖音、电商、商业化还是飞书）？团队目前的规模大概是多少人呢？
+- company_keyword: 阿里巴巴
+  custom_questions:
+  - 请问目前岗位所在的具体部门与业务条线是什么呀？
+- job_title_keyword: 技术合伙人
+  custom_questions:
+  - 请问目前的期权/股权激励机制以及核心团队的融资背景是怎样的呢？

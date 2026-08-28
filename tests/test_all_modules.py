@@ -20,6 +20,29 @@ class TestConfigAndGeo(unittest.TestCase):
     """测试配置加载与地理空间距离计算"""
     def setUp(self):
         self.cfg = ConfigManager()
+        self.cfg.cities_config["user_residence"] = {
+            "city": "杭州",
+            "district": "余杭区",
+            "address": "杭州未来科技城",
+            "latitude": 30.2796,
+            "longitude": 120.0253,
+            "province": "浙江"
+        }
+        self.cfg.cities_config["enabled_tiers"] = ["tier1_local", "tier2_adjacent", "tier3_province", "tier4_remote_or_national"]
+        if "tier1_local" not in self.cfg.cities_config.get("tiers_config", {}):
+            self.cfg.cities_config["tiers_config"] = {}
+        self.cfg.cities_config["tiers_config"]["tier1_local"] = {
+            "max_distance_km": 10.0,
+            "min_score": 75,
+            "salary_ratio": 0.90,
+            "priority_bonus": 15
+        }
+        self.cfg.cities_config["tiers_config"]["tier2_adjacent"] = {
+            "adjacent_cities": ["绍兴", "嘉兴", "湖州", "宁波"],
+            "min_score": 80,
+            "salary_ratio": 1.00,
+            "priority_bonus": 5
+        }
 
     def test_config_loading(self):
         """测试 4 个核心 YAML 配置文件是否完整有效"""

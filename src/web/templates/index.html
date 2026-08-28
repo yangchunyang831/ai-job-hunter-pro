@@ -646,13 +646,284 @@
                                             :class="filtersData.job_type === '1902' ? 'bg-indigo-600 border-indigo-500 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-400'">
                                             兼职
                                         </button>
+                    </div>
+
+                    <!-- 3. 个人简历画像交互中台 (selectedConfig === 'profile') -->
+                    <div v-else-if="selectedConfig === 'profile' && configViewMode === 'visual'"
+                        class="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 max-h-[calc(100vh-180px)]">
+                        
+                        <!-- 基础信息与求职目标 -->
+                        <div class="glass rounded-2xl p-5 flex flex-col gap-4 border-indigo-500/30">
+                            <div class="flex items-center gap-2 text-sm font-bold text-white">
+                                <span class="p-1.5 rounded-lg bg-indigo-600/30 text-indigo-400">
+                                    <i data-lucide="user" class="w-4 h-4"></i>
+                                </span>
+                                <span>基础简历信息与求职意向</span>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-slate-400">求职者姓名/称呼</label>
+                                    <input v-model="profileData.basics.name" type="text"
+                                        class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-slate-400">相关工作年限 (年)</label>
+                                    <input v-model.number="profileData.basics.years_of_experience" type="number"
+                                        class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-slate-400">最高学历背景</label>
+                                    <input v-model="profileData.basics.education.degree" type="text" placeholder="如: 统招本科 / 硕士"
+                                        class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-slate-400">当前求职状态</label>
+                                    <select v-model="profileData.basics.current_status"
+                                        class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+                                        <option value="已离职，随时可到岗">已离职，随时可到岗</option>
+                                        <option value="在职-考虑机会-1个月到岗">在职-考虑机会-1个月到岗</option>
+                                        <option value="应届生-随时可实习到岗">应届生-随时可实习到岗</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- 目标求职职位标签云 -->
+                            <div class="flex flex-col gap-1.5 text-xs">
+                                <label class="text-slate-400">意向岗位关键词列表 (回车新增)</label>
+                                <div class="flex items-center gap-2 flex-wrap bg-slate-950 border border-slate-800 rounded-xl p-2.5 min-h-[42px]">
+                                    <span v-for="(role, rIdx) in profileData.basics.target_roles" :key="rIdx"
+                                        class="px-2.5 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 flex items-center gap-1.5 text-xs">
+                                        {{ role }}
+                                        <i @click="removeProfileRole(rIdx)" data-lucide="x" class="w-3 h-3 hover:text-white cursor-pointer"></i>
+                                    </span>
+                                    <input @keydown.enter.prevent="addProfileRole($event)" placeholder="+输入意向岗位回车"
+                                        class="bg-transparent text-slate-200 text-xs focus:outline-none w-36">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 薪资预期基准 -->
+                        <div class="glass rounded-2xl p-5 flex flex-col gap-4 border-emerald-500/30">
+                            <div class="flex items-center gap-2 text-sm font-bold text-white">
+                                <span class="p-1.5 rounded-lg bg-emerald-600/30 text-emerald-400">
+                                    <i data-lucide="badge-dollar-sign" class="w-4 h-4"></i>
+                                </span>
+                                <span>薪资待遇预期基准 (单位: K/月)</span>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-slate-400">最低底线月薪 (K/月)</label>
+                                    <input v-model.number="profileData.salary_expectations.min_monthly_base_k" type="number"
+                                        class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-emerald-400 font-bold focus:outline-none focus:border-emerald-500">
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-slate-400">目标期望月薪 (K/月)</label>
+                                    <input v-model.number="profileData.salary_expectations.target_monthly_base_k" type="number"
+                                        class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-emerald-400 font-bold focus:outline-none focus:border-emerald-500">
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-slate-400">最低年薪底线 (K/年)</label>
+                                    <input v-model.number="profileData.salary_expectations.min_acceptable_annual_k" type="number"
+                                        class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500">
+                                </div>
+                                <div class="flex items-center gap-2 mt-4">
+                                    <input type="checkbox" v-model="profileData.salary_expectations.accept_stock_options" class="rounded text-emerald-600 focus:ring-0 cursor-pointer">
+                                    <label class="text-slate-300 text-xs">愿意接受股票/期权激励包</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 亮点项目提炼 -->
+                        <div class="glass rounded-2xl p-5 flex flex-col gap-4">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2 text-sm font-bold text-white">
+                                    <span class="p-1.5 rounded-lg bg-amber-600/30 text-amber-400">
+                                        <i data-lucide="trophy" class="w-4 h-4"></i>
+                                    </span>
+                                    <span>亮点项目经验 (LLM 将自动提取用于高回复率打招呼)</span>
+                                </div>
+                                <button @click="addProjectItem" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 cursor-pointer">
+                                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                                    <span>新增亮点项目</span>
+                                </button>
+                            </div>
+
+                            <div class="flex flex-col gap-3">
+                                <div v-for="(p, pIdx) in profileData.highlight_projects" :key="pIdx"
+                                    class="p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col gap-2.5 text-xs">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <div class="flex items-center gap-2 flex-1">
+                                            <input v-model="p.project_name" placeholder="项目名称" class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 font-bold flex-1">
+                                            <input v-model="p.role" placeholder="担任角色" class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-300 w-48">
+                                        </div>
+                                        <button @click="profileData.highlight_projects.splice(pIdx, 1)" class="text-rose-400 hover:text-rose-300 p-1">
+                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        </button>
                                     </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <div v-for="(h, hIdx) in p.highlights" :key="hIdx" class="flex items-center gap-2">
+                                            <span class="text-amber-400">•</span>
+                                            <input v-model="p.highlights[hIdx]" class="bg-slate-900/60 border border-slate-800/80 rounded px-2.5 py-1 text-slate-300 flex-1 text-xs">
+                                            <i @click="p.highlights.splice(hIdx, 1)" data-lucide="x" class="w-3.5 h-3.5 text-slate-500 hover:text-rose-400 cursor-pointer"></i>
+                                        </div>
+                                        <button @click="p.highlights.push('')" class="text-[11px] text-indigo-400 hover:text-indigo-300 self-start mt-1 cursor-pointer">
+                                            + 添加产出亮点
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 事实底线与拒绝条件 (Deal Breakers) -->
+                        <div class="glass rounded-2xl p-5 flex flex-col gap-3 border-rose-500/30">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2 text-sm font-bold text-rose-400">
+                                    <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                                    <span>事实底线与一票否决红线 (Deal Breakers)</span>
+                                </div>
+                                <button @click="profileData.deal_breakers.push('')" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 cursor-pointer">
+                                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                                    <span>新增红线</span>
+                                </button>
+                            </div>
+
+                            <div class="flex flex-col gap-2">
+                                <div v-for="(db, dbIdx) in profileData.deal_breakers" :key="dbIdx" class="flex items-center gap-2">
+                                    <input v-model="profileData.deal_breakers[dbIdx]" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 text-xs flex-1">
+                                    <button @click="profileData.deal_breakers.splice(dbIdx, 1)" class="text-slate-500 hover:text-rose-400 p-1">
+                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 3. 通用 YAML 源码编辑器 (用于高级代码模式) -->
+                    <!-- 4. 追问与摸底引擎交互中台 (selectedConfig === 'inquiries') -->
+                    <div v-else-if="selectedConfig === 'inquiries' && configViewMode === 'visual'"
+                        class="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 max-h-[calc(100vh-180px)]">
+
+                        <!-- 基础必问 5 大维度 -->
+                        <div class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-sky-500/30">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2 text-sm font-bold text-white">
+                                    <span class="p-1.5 rounded-lg bg-sky-600/30 text-sky-400">
+                                        <i data-lucide="help-circle" class="w-4 h-4"></i>
+                                    </span>
+                                    <span>基础必问 5 大标准维度 (初筛多轮自动摸底)</span>
+                                </div>
+                                <button @click="inquiriesData.baseline_inquiries.push({ dimension: '自定义维度', question: '' })"
+                                    class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 cursor-pointer">
+                                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                                    <span>新增必问</span>
+                                </button>
+                            </div>
+
+                            <div class="flex flex-col gap-2.5 text-xs">
+                                <div v-for="(inq, iIdx) in inquiriesData.baseline_inquiries" :key="iIdx"
+                                    class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                                    <span class="px-2 py-1 rounded bg-sky-500/20 text-sky-300 font-bold text-[11px] whitespace-nowrap">
+                                        {{ inq.dimension || `维度${iIdx+1}` }}
+                                    </span>
+                                    <input v-model="inq.question" class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 flex-1">
+                                    <button @click="inquiriesData.baseline_inquiries.splice(iIdx, 1)" class="text-slate-500 hover:text-rose-400 p-1">
+                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 类别定制与大厂单点覆写 -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- 类别模板 -->
+                            <div class="glass rounded-2xl p-5 flex flex-col gap-3 text-xs">
+                                <div class="font-bold text-sm text-white flex items-center gap-2">
+                                    <i data-lucide="layers" class="w-4 h-4 text-indigo-400"></i>
+                                    <span>岗位类别针对性追问</span>
+                                </div>
+                                <div v-for="(tVal, tKey) in inquiriesData.category_templates" :key="tKey" class="flex flex-col gap-1.5 p-3 rounded-xl bg-slate-950 border border-slate-800">
+                                    <span class="font-bold text-indigo-400 uppercase text-[11px]">{{ tKey }} 类别专属问题</span>
+                                    <div v-for="(q, qIdx) in tVal.questions" :key="qIdx" class="flex items-center gap-2">
+                                        <input v-model="tVal.questions[qIdx]" class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-300 flex-1 text-xs">
+                                        <i @click="tVal.questions.splice(qIdx, 1)" data-lucide="x" class="w-3.5 h-3.5 text-slate-500 hover:text-rose-400 cursor-pointer"></i>
+                                    </div>
+                                    <button @click="tVal.questions.push('')" class="text-[11px] text-indigo-400 self-start mt-1 cursor-pointer">+ 添加问题</button>
+                                </div>
+                            </div>
+
+                            <!-- 大厂单点精准追问 -->
+                            <div class="glass rounded-2xl p-5 flex flex-col gap-3 text-xs">
+                                <div class="font-bold text-sm text-white flex items-center gap-2">
+                                    <i data-lucide="building" class="w-4 h-4 text-amber-400"></i>
+                                    <span>知名大厂单点针对性追问 (Company Overrides)</span>
+                                </div>
+                                <div v-for="(cVal, cKey) in inquiriesData.company_overrides" :key="cKey" class="flex flex-col gap-1.5 p-3 rounded-xl bg-slate-950 border border-slate-800">
+                                    <span class="font-bold text-amber-400 text-[11px]">【{{ cKey }}】专属追问</span>
+                                    <div v-for="(cq, cqIdx) in cVal.questions" :key="cqIdx" class="flex items-center gap-2">
+                                        <input v-model="cVal.questions[cqIdx]" class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-300 flex-1 text-xs">
+                                        <i @click="cVal.questions.splice(cqIdx, 1)" data-lucide="x" class="w-3.5 h-3.5 text-slate-500 hover:text-rose-400 cursor-pointer"></i>
+                                    </div>
+                                    <button @click="cVal.questions.push('')" class="text-[11px] text-amber-400 self-start mt-1 cursor-pointer">+ 添加大厂问题</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 5. 避坑黑名单库交互中台 (selectedConfig === 'blacklist') -->
+                    <div v-else-if="selectedConfig === 'blacklist' && configViewMode === 'visual'"
+                        class="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 max-h-[calc(100vh-180px)]">
+
+                        <!-- 劳务派遣与纯外包公司黑名单 -->
+                        <div class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-rose-500/30">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2 text-sm font-bold text-white">
+                                    <span class="p-1.5 rounded-lg bg-rose-600/30 text-rose-400">
+                                        <i data-lucide="ban" class="w-4 h-4"></i>
+                                    </span>
+                                    <div>
+                                        <h3 class="font-bold text-white">劳务派遣与纯外包公司黑名单 (命中一票否决)</h3>
+                                        <p class="text-xs text-slate-400">已收录 {{ blacklistData.outsourcing_companies.length }} 家外包企业，系统扫描到将自动静默跳过</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2 flex-wrap bg-slate-950 border border-slate-800 rounded-2xl p-3.5 min-h-[60px]">
+                                <span v-for="(comp, cIdx) in blacklistData.outsourcing_companies" :key="cIdx"
+                                    class="px-3 py-1 rounded-lg bg-rose-500/20 text-rose-300 text-xs flex items-center gap-1.5 font-medium">
+                                    {{ comp }}
+                                    <i @click="blacklistData.outsourcing_companies.splice(cIdx, 1)" data-lucide="x" class="w-3 h-3 hover:text-white cursor-pointer"></i>
+                                </span>
+                                <input @keydown.enter.prevent="addBlacklistCompany($event)" placeholder="+输入外包公司名回车添加"
+                                    class="bg-transparent text-slate-200 text-xs focus:outline-none w-44">
+                            </div>
+                        </div>
+
+                        <!-- 劣质岗位关键词过滤 -->
+                        <div class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-amber-500/30">
+                            <div class="flex items-center gap-2 text-sm font-bold text-white">
+                                <span class="p-1.5 rounded-lg bg-amber-600/30 text-amber-400">
+                                    <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                                </span>
+                                <div>
+                                    <h3 class="font-bold text-white">劣质岗位/套路岗位关键词过滤</h3>
+                                    <p class="text-xs text-slate-400">职位标题只要包含以下关键词，大模型将直接予以淘汰</p>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2 flex-wrap bg-slate-950 border border-slate-800 rounded-2xl p-3.5 min-h-[60px]">
+                                <span v-for="(kw, kIdx) in blacklistData.title_keywords" :key="kIdx"
+                                    class="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 text-xs flex items-center gap-1.5 font-medium">
+                                    {{ kw }}
+                                    <i @click="blacklistData.title_keywords.splice(kIdx, 1)" data-lucide="x" class="w-3 h-3 hover:text-white cursor-pointer"></i>
+                                </span>
+                                <input @keydown.enter.prevent="addBlacklistKeyword($event)" placeholder="+输入过滤词回车添加"
+                                    class="bg-transparent text-slate-200 text-xs focus:outline-none w-44">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6. 通用 YAML 源码编辑器 (用于高级代码模式) -->
                     <div v-else class="flex-1 glass rounded-2xl p-4 flex flex-col">
                         <textarea v-model="configYamlContent"
                             class="flex-1 w-full bg-slate-950/80 border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-200 focus:outline-none focus:border-indigo-500 selection:bg-indigo-500 leading-relaxed resize-none">
@@ -892,6 +1163,117 @@
                     }
                 };
 
+                // 3. 个人画像数据
+                const profileData = ref({
+                    basics: {
+                        name: '求职者',
+                        target_roles: ['AI Agent 工程师', 'Python 后端开发专家', '全栈开发工程师'],
+                        years_of_experience: 4,
+                        education: { degree: '统招本科', major: '计算机科学与技术' },
+                        current_status: '已离职，随时可到岗'
+                    },
+                    salary_expectations: {
+                        min_monthly_base_k: 22,
+                        target_monthly_base_k: 28,
+                        accept_stock_options: true,
+                        min_acceptable_annual_k: 300
+                    },
+                    highlight_projects: [
+                        {
+                            project_name: '企业级自主 AI Agent 自动化求职与客服工作流',
+                            role: '核心架构师与独立开发者',
+                            highlights: [
+                                '基于 CDP 协议与浏览器沙箱，实现零封号的智能多轮会话调度系统',
+                                '利用 DeepSeek 结构化输出实现毫秒级 JD 语义打分与意图路由，回复率提升 3.5 倍'
+                            ]
+                        }
+                    ],
+                    deal_breakers: [
+                        '绝不接受劳务派遣、纯外包或驻场外派岗位',
+                        '不接受无底薪、纯提成制或单休/大小周企业',
+                        '不接受低于 20K 的薪资报价'
+                    ]
+                });
+
+                const addProfileRole = (e) => {
+                    const val = e.target.value.trim();
+                    if (!val) return;
+                    if (!profileData.value.basics.target_roles) profileData.value.basics.target_roles = [];
+                    if (!profileData.value.basics.target_roles.includes(val)) {
+                        profileData.value.basics.target_roles.push(val);
+                    }
+                    e.target.value = '';
+                    nextTick(() => lucide.createIcons());
+                };
+
+                const removeProfileRole = (idx) => {
+                    profileData.value.basics.target_roles.splice(idx, 1);
+                    nextTick(() => lucide.createIcons());
+                };
+
+                const addProjectItem = () => {
+                    if (!profileData.value.highlight_projects) profileData.value.highlight_projects = [];
+                    profileData.value.highlight_projects.push({
+                        project_name: '新项目名称',
+                        role: '核心开发者',
+                        highlights: ['项目核心亮点与量化成果 1']
+                    });
+                    nextTick(() => lucide.createIcons());
+                };
+
+                // 4. 追问摸底数据
+                const inquiriesData = ref({
+                    baseline_inquiries: [
+                        { dimension: '业务线确认', question: '请问该岗位主要负责哪条核心业务线？' },
+                        { dimension: '团队自研规模', question: '咱们目前技术研发团队大概有多少人规模？' },
+                        { dimension: '纯自研系统', question: '项目是公司纯自研核心产品还是外派交付性质？' },
+                        { dimension: '加班大小周', question: '请问团队平时的作息与加班强度是怎样的？是否有大小周？' },
+                        { dimension: '上下班作息', question: '具体的弹性上下班时间是几点到几点？' }
+                    ],
+                    category_templates: {
+                        ai_agent: { questions: ['请问大模型方向主要采用开源微调还是 RAG/Agent 编排架构？'] },
+                        python_backend: { questions: ['后端主要采用 FastAPI/Django 还是高并发微服务架构？'] }
+                    },
+                    company_overrides: {
+                        '字节跳动': { questions: ['请问是属于字节哪个业务大方向（抖音/电商/飞书/火山）？'] },
+                        '阿里巴巴': { questions: ['请问是属于淘天、阿里云还是国际化业务线？'] }
+                    }
+                });
+
+                // 5. 避坑黑名单数据
+                const blacklistData = ref({
+                    outsourcing_companies: [
+                        '中软国际', '软通动力', '文思海辉', '博彦科技', '法本信息', '宇信科技',
+                        '诚迈科技', '易宝软件', '佰钧成', '神州信息', '润和软件', '拓保软件'
+                    ],
+                    title_keywords: [
+                        '兼职', '无底薪', '销售性质', '电话客服', '招募合伙人', '居家手工', '话务员', '培训机构', '实习生'
+                    ],
+                    company_names: []
+                });
+
+                const addBlacklistCompany = (e) => {
+                    const val = e.target.value.trim();
+                    if (!val) return;
+                    if (!blacklistData.value.outsourcing_companies) blacklistData.value.outsourcing_companies = [];
+                    if (!blacklistData.value.outsourcing_companies.includes(val)) {
+                        blacklistData.value.outsourcing_companies.push(val);
+                    }
+                    e.target.value = '';
+                    nextTick(() => lucide.createIcons());
+                };
+
+                const addBlacklistKeyword = (e) => {
+                    const val = e.target.value.trim();
+                    if (!val) return;
+                    if (!blacklistData.value.title_keywords) blacklistData.value.title_keywords = [];
+                    if (!blacklistData.value.title_keywords.includes(val)) {
+                        blacklistData.value.title_keywords.push(val);
+                    }
+                    e.target.value = '';
+                    nextTick(() => lucide.createIcons());
+                };
+
                 const fetchStatus = async () => {
                     try {
                         const res = await fetch('/api/status');
@@ -923,6 +1305,18 @@
                             const dataRes = await fetch(`/api/config/filters/data`);
                             const json = await dataRes.json();
                             filtersData.value = json.data || { search_mode: 'recommend', experience: [], degree: [], salary: [], scale: [], stage: [], job_type: '1901' };
+                        } else if (name === 'profile') {
+                            const dataRes = await fetch(`/api/config/profile/data`);
+                            const json = await dataRes.json();
+                            profileData.value = json.data || {};
+                        } else if (name === 'inquiries') {
+                            const dataRes = await fetch(`/api/config/inquiries/data`);
+                            const json = await dataRes.json();
+                            inquiriesData.value = json.data || { baseline_inquiries: [], category_templates: {}, company_overrides: {} };
+                        } else if (name === 'blacklist') {
+                            const dataRes = await fetch(`/api/config/blacklist/data`);
+                            const json = await dataRes.json();
+                            blacklistData.value = json.data || { outsourcing_companies: [], title_keywords: [], company_names: [] };
                         }
                         const res = await fetch(`/api/config/${name}`);
                         const data = await res.json();
@@ -935,29 +1329,23 @@
 
                 const saveCurrentConfig = async () => {
                     try {
-                        if (selectedConfig.value === 'cities' && configViewMode.value === 'visual') {
-                            const res = await fetch(`/api/config/cities/data`, {
+                        if (configViewMode.value === 'visual') {
+                            let payload = {};
+                            if (selectedConfig.value === 'cities') payload = citiesData.value;
+                            else if (selectedConfig.value === 'filters') payload = filtersData.value;
+                            else if (selectedConfig.value === 'profile') payload = profileData.value;
+                            else if (selectedConfig.value === 'inquiries') payload = inquiriesData.value;
+                            else if (selectedConfig.value === 'blacklist') payload = blacklistData.value;
+
+                            const res = await fetch(`/api/config/${selectedConfig.value}/data`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ data: citiesData.value })
+                                body: JSON.stringify({ data: payload })
                             });
                             const data = await res.json();
                             if (res.ok) {
-                                alert(data.message || '多城市空间辐射策略已成功保存生效！');
-                                loadConfig('cities');
-                            } else {
-                                alert(data.detail || '保存失败');
-                            }
-                        } else if (selectedConfig.value === 'filters' && configViewMode.value === 'visual') {
-                            const res = await fetch(`/api/config/filters/data`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ data: filtersData.value })
-                            });
-                            const data = await res.json();
-                            if (res.ok) {
-                                alert(data.message || 'BOSS 官方多维筛选器已成功保存生效！');
-                                loadConfig('filters');
+                                alert(data.message || '配置已成功保存生效！');
+                                loadConfig(selectedConfig.value);
                             } else {
                                 alert(data.detail || '保存失败');
                             }
@@ -1068,6 +1456,14 @@
                     filtersData,
                     hasFilterValue,
                     toggleFilterArray,
+                    profileData,
+                    addProfileRole,
+                    removeProfileRole,
+                    addProjectItem,
+                    inquiriesData,
+                    blacklistData,
+                    addBlacklistCompany,
+                    addBlacklistKeyword,
                     jobsList,
                     logs,
                     fetchJobs,
