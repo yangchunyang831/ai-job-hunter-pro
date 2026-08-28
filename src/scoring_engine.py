@@ -25,12 +25,47 @@ class ScoringEngine:
             self.client = None
             logger.warning("No LLM API Key provided; ScoringEngine will run in rule-only or mock mode.")
 
-    def pre_filter_hard_rules(self, job: RawJobCard) -> Tuple[bool, Optional[str]]:
-        """第一层：硬性规则与黑名单零 Token 过滤"""
-        blacklist = self.config_manager.blacklist_config
+    SAFETY_RISK_KEYWORDS = [
+        "出境", "出国", "海外高薪", "柬埔寨", "缅甸", "老挝", "菲律宾", "迪拜客服", "包机票签证",
+        "兼职刷单", "挂机", "资金盘", "跑分", "租借微信", "租借银行卡", "微信解封", "兼职模特高额拍摄费",
+        "入职需交押金", "先培训后付款", "培训费自理", "自费考证", "夜总会", "商务伴游", "公关佳丽",
+        "陪酒", "高利贷", "催收部", "博彩", "棋牌推广"
+    ]
+
+    def _parse_salary_to_k(self, salary_raw: str) -> Tuple[Optional[float], Optional[float]]:
+        """解析多种格式薪资为标准千元 (K/月)"""
+        if not salary_raw or "面议" in salary_raw:
+            return None, None
         
+        # 1. 常见 15-30K, 3-5K
+        match_k = re.findall(r"(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*K", salary_raw, re.IGNORECASE)
+        if match_k:
+            return float(match_k[0][0]), float(match_k[0][1])
+
+        # 2. 3000-5000元/月, 3000-5000
+        match_yuan = re.findall(r"(\d{4,6})\s*-\s*(\d{4,6})", salary_raw)
+        if match_yuan:
+            return round(float(match_yuan[0][0]) / 1000.0, 1), round(float(match_yuan[0][1]) / 1000.0, 1)
+
+        # 3. 3-5千/月
+        match_qian = re.findall(r"(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*千", salary_raw)
+        if match_qian:
+            return float(match_qian[0][0]), float(match_qian[0][1])
+
+        return None, None
+
+    def pre_filter_hard_rules(self, job: RawJobCard) -> Tuple[bool, Optional[str]]:
+        """第一层：人身安全、合规反诈、硬性规则与黑名单零 Token 过滤"""
+        blacklist = self.config_manager.blacklist_config
+        jd = (job.jd_text or "") + " " + (job.job_title or "")
+        company = job.company_name or ""
+
+        # 0. 🛡️ 最高优先级：人身安全与反诈灰产一票否决
+        for safe_kw in self.SAFETY_RISK_KEYWORDS:
+            if safe_kw in jd or safe_kw in company:
+                return False, f"🛑 触发人身安全/反诈高危风控拦截: 包含【{safe_kw}】"
+
         # 1. 外包公司名称过滤
-        company = job.company_name
         for ob in blacklist.get("outsourcing_companies", []):
             if ob in company:
                 return False, f"命中外包企业黑名单: {ob}"
@@ -40,22 +75,19 @@ class ScoringEngine:
                 return False, f"命中自定义企业黑名单: {custom_comp}"
 
         # 2. JD 关键词过滤
-        jd = job.jd_text
         for kw in blacklist.get("jd_forbidden_keywords", []):
-            if kw in jd or kw in job.job_title:
+            if kw in jd:
                 return False, f"JD/标题包含违禁词: {kw}"
 
-        # 3. 薪资套路分析
-        # 示例: 15-30K, 4-25K
-        salary_match = re.findall(r"(\d+)-(\d+)K", job.salary_raw, re.IGNORECASE)
-        if salary_match:
-            min_k, max_k = int(salary_match[0][0]), int(salary_match[0][1])
-            ratio_limit = blacklist.get("salary_anomaly_rules", {}).get("max_ratio_allowed", 2.3)
+        # 3. 薪资套路分析与底线核验
+        min_k, max_k = self._parse_salary_to_k(job.salary_raw)
+        if min_k is not None and max_k is not None:
+            ratio_limit = blacklist.get("salary_anomaly_rules", {}).get("max_ratio_allowed", 2.5)
             if min_k > 0 and (max_k / min_k) > ratio_limit:
                 return False, f"薪资跨度异常 ({job.salary_raw})，判定为画饼/纯提成岗"
 
             # 最低薪资底线
-            min_acceptable = self.config_manager.profile_config.get("salary_expectations", {}).get("min_monthly_base_k", 20)
+            min_acceptable = float(self.config_manager.profile_config.get("salary_expectations", {}).get("min_monthly_base_k", 3.0))
             if max_k < min_acceptable:
                 return False, f"薪资上限 {max_k}K 低于求职者底线 {min_acceptable}K"
 
@@ -103,20 +135,23 @@ class ScoringEngine:
         # 3. 如果没有 API Key，退化为基于规则打分
         if not self.client:
             return JobEvaluationResult(
-                score=80,
+                score=82,
                 passed=True,
                 tier_level=tier,
                 distance_km=dist,
-                match_highlights=["具备核心技术栈匹配经历"],
-                custom_greeting=f"您好！关注到咱们【{job.company_name}】的【{job.job_title}】岗位，我的技术背景与该方向高度吻合，期待与您进一步沟通！"
+                match_highlights=["教育背景与综合素养契合", "地理通勤圈与意向相符"],
+                custom_greeting=f"您好！关注到咱们【{job.company_name}】正在招聘【{job.job_title}】，我的个人背景与任职要求契合度高，学习与执行力强，希望能与您进一步沟通交流！"
             )
 
         # 4. 构造 LLM 打分 Prompt
         profile = self.config_manager.profile_config
         system_prompt = (
-            "你是一个资深的技术求职顾问。请根据【候选人简历画像】和【岗位JD】，对该岗位的匹配度进行严谨打分 (0-100)，"
-            "并提取 1-2 个具体契合点生成 100 字以内的礼貌、专业、突出个人项目产出的定制打招呼语。\n"
-            "必须输出合法的 JSON 格式，字段包含：score (int), passed (bool), match_highlights (list of str), risk_factors (list of str), custom_greeting (str), reason (str)."
+            "你是一个严谨、务实、懂职场的智能求职顾问。请根据【候选人简历画像】和【目标岗位JD】评估匹配度 (0-100分)。\n"
+            "【评估核心原则】:\n"
+            "1. 严禁人身安全隐患与非法违规（若发现灰产、涉诈、出境、套路收费，直接判 0 分淘汰）。\n"
+            "2. 候选人接受广谱合法岗位（包括计算机相关、行政、文职、运营、技术支持、商务接待/C1驾驶、仓储物流等各类合法工作）。\n"
+            "3. 针对非技术类岗位，打招呼语必须真诚自然，突出本科素养、学习力与严谨态度，严禁在文职/行政岗位上生搬硬套不相关的深奥技术名词。\n"
+            "输出必须为合法的 JSON 格式：score (int), passed (bool), match_highlights (list), risk_factors (list), custom_greeting (str), reason (str)."
         )
 
         user_content = f"""

@@ -1,53 +1,55 @@
 user_residence:
-  city: 安江
-  district: 怀化市
+  city: 怀化
+  district: 安江镇
   address: 安江镇裕湘花园
-  latitude: 30.2796
-  longitude: 120.0253
-  province: 全国
+  latitude: 27.5601
+  longitude: 109.9985
+  province: 湖南
 enabled_tiers:
 - tier1_local
 - tier2_adjacent
+- tier3_province
 - tier4_remote_or_national
 tiers_config:
   tier1_local:
-    name: 'Tier 1: 10km 本地神仙通勤圈 (安江余杭区)'
+    name: 'Tier 1: 10km 本地神仙通勤圈 (怀化安江)'
     enabled: true
-    max_distance_km: 10
+    max_distance_km: 15.0
     min_score: 75
     salary_ratio: 0.9
     priority_bonus: 15
-    greeting_tone: 突出居住在附近、通勤极度稳定、可随时到面/到岗
+    greeting_tone: 突出居住在安江附近、通勤极度稳定、可随时到岗
   tier2_adjacent:
-    name: 'Tier 2: 邻近 1 小时核心地级市圈'
+    name: 'Tier 2: 邻近核心地级市圈'
     enabled: true
     adjacent_cities:
-    - 周边城市1
-    - 周边城市2
-    min_score: 80
-    salary_ratio: 1
+    - 湘西
+    - 邵阳
+    - 娄底
+    - 铜仁
+    - 吉首
+    min_score: 78
+    salary_ratio: 1.0
     priority_bonus: 5
-    greeting_tone: 确认通勤与班车/高铁交通补贴政策
+    greeting_tone: 确认通勤与班车/交通补贴政策
   tier3_province:
-    name: 'Tier 3: 全国省内其他中心城市'
-    enabled: false
-    min_score: 85
-    salary_ratio: 1.15
-    require_company_scale_min: 100
-    greeting_tone: 确认异地租房生活成本覆盖与自研平台发展空间
-  tier4_remote_or_national:
-    name: 'Tier 4: 全国优质机会 & 远程办公 (Remote)'
+    name: 'Tier 3: 湖南省内核心城市 (长株潭等)'
     enabled: true
-    min_score: 88
-    salary_ratio: 1.3
+    min_score: 80
+    salary_ratio: 1.1
+    priority_bonus: 0
+    require_company_scale_min: 50
+    greeting_tone: 突出全日制本科背景与综合素养，确认异地发展意愿
+  tier4_remote_or_national:
+    name: 'Tier 4: 全国优质机会与远程办公'
+    enabled: true
+    min_score: 85
+    salary_ratio: 1.25
     remote_job_bonus: 20
     target_hub_cities:
-    - 上海
     - 深圳
-    - 北京
     - 广州
+    - 上海
     - 杭州
-    - 成都
-    - 武汉
-    - 南京
-    greeting_tone: 突出技术硬核与远程自主推进能力，异地求职意向明确
+    - 北京
+    greeting_tone: 突出计算机与区块链本科基础、远程推进与学习能力

@@ -182,10 +182,10 @@ class TestScoringEngine(unittest.TestCase):
         """测试薪资上限低于求职者底线拦截"""
         job = RawJobCard(
             job_id="test_3",
-            job_title="初级开发",
-            company_name="正常自研科技",
-            salary_raw="8-12K", # 候选人底线为 22K
-            city="杭州"
+            job_title="初级文员",
+            company_name="正常商贸公司",
+            salary_raw="1.5-2.5K", # 候选人底线为 3.5K
+            city="怀化"
         )
         passed, reason = self.engine.pre_filter_hard_rules(job)
         self.assertFalse(passed)

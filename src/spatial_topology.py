@@ -85,6 +85,60 @@ METRO_CLUSTER_TOPOLOGY: Dict[str, Dict[str, Any]] = {
         "adjacent_cities": ["无锡", "上海", "常州", "嘉兴", "南通"],
         "province_cities": ["南京", "扬州", "镇江", "泰州", "盐城"]
     },
+    "怀化": {
+        "province": "湖南",
+        "default_lat": 27.5601,
+        "default_lon": 109.9985,
+        "default_district": "安江镇",
+        "default_address": "安江镇裕湘花园",
+        "adjacent_cities": ["湘西", "邵阳", "娄底", "铜仁", "吉首"],
+        "province_cities": ["长沙", "株洲", "湘潭", "衡阳", "岳阳", "常德", "益阳", "郴州", "永州", "张家界"]
+    },
+    "长沙": {
+        "province": "湖南",
+        "default_lat": 28.2282,
+        "default_lon": 112.9388,
+        "default_district": "岳麓区",
+        "default_address": "麓谷高新区/中电软件园",
+        "adjacent_cities": ["株洲", "湘潭", "益阳", "岳阳", "娄底"],
+        "province_cities": ["衡阳", "常德", "邵阳", "郴州", "怀化", "永州", "张家界", "湘西"]
+    },
+    "重庆": {
+        "province": "重庆",
+        "default_lat": 29.5630,
+        "default_lon": 106.5516,
+        "default_district": "渝北区",
+        "default_address": "光电园/照母山",
+        "adjacent_cities": ["广安", "达州", "遵义", "泸州"],
+        "province_cities": ["成都", "绵阳", "德阳"]
+    },
+    "贵阳": {
+        "province": "贵州",
+        "default_lat": 26.5982,
+        "default_lon": 106.7072,
+        "default_district": "观山湖区",
+        "default_address": "金融城/大数据产业园",
+        "adjacent_cities": ["遵义", "安顺", "黔南", "铜仁"],
+        "province_cities": ["毕节", "六盘水", "黔东南", "怀化"]
+    },
+    "合肥": {
+        "province": "安徽",
+        "default_lat": 31.8206,
+        "default_lon": 117.2272,
+        "default_district": "蜀山区",
+        "default_address": "高新区创新产业园",
+        "adjacent_cities": ["六安", "淮南", "巢湖", "芜湖", "滁州"],
+        "province_cities": ["蚌埠", "马鞍山", "安庆", "阜阳"]
+    },
+    "郑州": {
+        "province": "河南",
+        "default_lat": 34.7466,
+        "default_lon": 113.6253,
+        "default_district": "金水区",
+        "default_address": "郑东新区龙子湖",
+        "adjacent_cities": ["开封", "新乡", "焦作", "许昌"],
+        "province_cities": ["洛阳", "南阳", "平顶山", "商丘"]
+    },
     "西安": {
         "province": "陕西",
         "default_lat": 34.2258,
