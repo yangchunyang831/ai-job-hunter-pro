@@ -3,7 +3,8 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 async def test_bot_view():
-    screenshots_dir = Path(r"C:\Users\Administrator\.gemini\antigravity\brain\82b066e7-211b-4ed7-bf67-fe4723c9e8ea\test_screenshots")
+    screenshots_dir = Path(__file__).resolve().parent / "test_screenshots"
+    screenshots_dir.mkdir(parents=True, exist_ok=True)
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             executable_path=r"C:\Program Files\Google\Chrome\Application\chrome.exe",

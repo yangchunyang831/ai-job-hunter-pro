@@ -136,7 +136,7 @@ def test_backend_persona_evaluations():
 
 async def test_frontend_persona_gui():
     print("\n================ 2. 候选人前端 GUI 全流程测试与交互截屏 ================")
-    screenshots_dir = Path(r"C:\Users\Administrator\.gemini\antigravity\brain\82b066e7-211b-4ed7-bf67-fe4723c9e8ea\persona_test_screenshots")
+    screenshots_dir = Path(__file__).resolve().parent / "persona_test_screenshots"
     screenshots_dir.mkdir(parents=True, exist_ok=True)
 
     async with async_playwright() as p:

@@ -8,8 +8,7 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 async def run_gui_tests():
-    artifacts_dir = Path(r"C:\Users\Administrator\.gemini\antigravity\brain\82b066e7-211b-4ed7-bf67-fe4723c9e8ea")
-    screenshots_dir = artifacts_dir / "test_screenshots"
+    screenshots_dir = Path(__file__).resolve().parent / "test_screenshots"
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     
     console_errors = []
