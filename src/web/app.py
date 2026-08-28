@@ -29,6 +29,7 @@ app = FastAPI(title="AI Job Hunter Pro Dashboard")
 # 全局状态管理
 class AppState:
     agent_thread: Optional[threading.Thread] = None
+    current_controller: Optional[CDPBrowserController] = None
     stop_event = threading.Event()
     is_running = False
     current_mode = "IDLE"  # IDLE, SCAN_ONLY, LIVE_APPLY
@@ -200,6 +201,7 @@ def _run_agent_worker(dry_run: bool, max_apply: int):
     notifier = NotificationManager()
     engine = ScoringEngine(cfg)
     controller = CDPBrowserController(notifier=notifier, stop_event=state.stop_event)
+    state.current_controller = controller
 
     state.is_running = True
     state.current_mode = "SCAN_ONLY" if dry_run else "LIVE_APPLY"
@@ -248,13 +250,20 @@ def _run_agent_worker(dry_run: bool, max_apply: int):
 
                 controller.human_delay(3.0, 5.0)
 
-        notifier.send_daily_summary(scanned_count, len(high_match), high_match)
-        logger.info(f"✨ 任务已完成！总扫描: {scanned_count} 个，投递: {len(high_match)} 个。")
+        if not state.stop_event.is_set():
+            notifier.send_daily_summary(scanned_count, len(high_match), high_match)
+            logger.info(f"✨ 任务已完成！总扫描: {scanned_count} 个，投递: {len(high_match)} 个。")
+        else:
+            logger.info(f"⏹ 工作流已完全停止 (已扫描 {scanned_count} 个岗位)。")
 
     except Exception as e:
-        logger.error(f"Agent 运行异常: {e}")
+        if state.stop_event.is_set():
+            logger.info("⏹ 工作流已按用户指令安全中断。")
+        else:
+            logger.error(f"Agent 运行异常: {e}")
     finally:
         controller.close()
+        state.current_controller = None
         state.is_running = False
         state.current_mode = "IDLE"
 
@@ -277,10 +286,17 @@ async def start_agent_task(req: AgentStartRequest):
 
 @app.post("/api/agent/stop")
 async def stop_agent_task():
+    logger = logging.getLogger("JobAgent")
+    logger.info("🛑 收到用户强制停止指令，正在立即切断浏览器操作...")
     state.stop_event.set()
+    if state.current_controller:
+        try:
+            state.current_controller.abort()
+        except Exception:
+            pass
     state.is_running = False
     state.current_mode = "IDLE"
-    return {"status": "stopped", "message": "已成功向 Agent 发送停止指令，已立即终止！"}
+    return {"status": "stopped", "message": "已成功向 Agent 发送停止指令并强制切断操作！"}
 
 
 # ==========================================

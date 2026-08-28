@@ -40,8 +40,24 @@ class CDPBrowserController:
 
     def close(self):
         """释放资源"""
-        if self._playwright:
-            self._playwright.stop()
+        try:
+            if self._playwright:
+                self._playwright.stop()
+        except Exception:
+            pass
+
+    def abort(self):
+        """强行立即切断浏览器当前操作 (毫秒级中断)"""
+        logger.info("🛑 正在强制中断 CDP 浏览器会话...")
+        try:
+            if self.search_page and not self.search_page.is_closed():
+                self.search_page.close()
+        except Exception:
+            pass
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def human_delay(self, min_s: float = 2.0, max_s: float = 4.5):
         """拟人化随机停顿 (支持即时中断)"""
