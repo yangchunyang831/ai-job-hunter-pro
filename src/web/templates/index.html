@@ -495,6 +495,7 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
                     </div>
 
                     <!-- 2. BOSS 官方原生多维筛选矩阵交互中台 (selectedConfig === 'filters') -->
@@ -646,6 +647,10 @@
                                             :class="filtersData.job_type === '1902' ? 'bg-indigo-600 border-indigo-500 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-400'">
                                             兼职
                                         </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- 3. 个人简历画像交互中台 (selectedConfig === 'profile') -->
@@ -804,30 +809,30 @@
                     <div v-else-if="selectedConfig === 'inquiries' && configViewMode === 'visual'"
                         class="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 max-h-[calc(100vh-180px)]">
 
-                        <!-- 基础必问 5 大维度 -->
+                        <!-- 基础必问标准维度 -->
                         <div class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-sky-500/30">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center gap-2 text-sm font-bold text-white">
                                     <span class="p-1.5 rounded-lg bg-sky-600/30 text-sky-400">
                                         <i data-lucide="help-circle" class="w-4 h-4"></i>
                                     </span>
-                                    <span>基础必问 5 大标准维度 (初筛多轮自动摸底)</span>
+                                    <span>基础必问核心维度 (初筛多轮自动摸底)</span>
                                 </div>
-                                <button @click="inquiriesData.baseline_inquiries.push({ dimension: '自定义维度', question: '' })"
+                                <button @click="addBaselineInquiry"
                                     class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 cursor-pointer">
                                     <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-                                    <span>新增必问</span>
+                                    <span>新增必问维度</span>
                                 </button>
                             </div>
 
                             <div class="flex flex-col gap-2.5 text-xs">
-                                <div v-for="(inq, iIdx) in inquiriesData.baseline_inquiries" :key="iIdx"
+                                <div v-for="(inq, iKey) in (inquiriesData.baseline_inquiries?.items || {})" :key="iKey"
                                     class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-                                    <span class="px-2 py-1 rounded bg-sky-500/20 text-sky-300 font-bold text-[11px] whitespace-nowrap">
-                                        {{ inq.dimension || `维度${iIdx+1}` }}
+                                    <span class="px-2.5 py-1 rounded bg-sky-500/20 text-sky-300 font-bold text-xs whitespace-nowrap">
+                                        {{ iKey }}
                                     </span>
-                                    <input v-model="inq.question" class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 flex-1">
-                                    <button @click="inquiriesData.baseline_inquiries.splice(iIdx, 1)" class="text-slate-500 hover:text-rose-400 p-1">
+                                    <input v-model="inq.question_prompt" class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 flex-1 text-xs">
+                                    <button @click="delete inquiriesData.baseline_inquiries.items[iKey]" class="text-slate-500 hover:text-rose-400 p-1">
                                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                                     </button>
                                 </div>
@@ -842,13 +847,14 @@
                                     <i data-lucide="layers" class="w-4 h-4 text-indigo-400"></i>
                                     <span>岗位类别针对性追问</span>
                                 </div>
-                                <div v-for="(tVal, tKey) in inquiriesData.category_templates" :key="tKey" class="flex flex-col gap-1.5 p-3 rounded-xl bg-slate-950 border border-slate-800">
-                                    <span class="font-bold text-indigo-400 uppercase text-[11px]">{{ tKey }} 类别专属问题</span>
-                                    <div v-for="(q, qIdx) in tVal.questions" :key="qIdx" class="flex items-center gap-2">
-                                        <input v-model="tVal.questions[qIdx]" class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-300 flex-1 text-xs">
-                                        <i @click="tVal.questions.splice(qIdx, 1)" data-lucide="x" class="w-3.5 h-3.5 text-slate-500 hover:text-rose-400 cursor-pointer"></i>
+                                <div v-for="(catVal, catKey) in (inquiriesData.category_inquiry_templates || {})" :key="catKey"
+                                    class="flex flex-col gap-2 p-3.5 rounded-xl bg-slate-950 border border-slate-800">
+                                    <span class="font-bold text-indigo-400 text-xs">{{ catVal.category_name || catKey }}</span>
+                                    <div v-for="(q, qIdx) in (catVal.questions || [])" :key="qIdx" class="flex items-center gap-2">
+                                        <input v-model="q.prompt" class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-300 flex-1 text-xs">
+                                        <i @click="catVal.questions.splice(qIdx, 1)" data-lucide="x" class="w-3.5 h-3.5 text-slate-500 hover:text-rose-400 cursor-pointer"></i>
                                     </div>
-                                    <button @click="tVal.questions.push('')" class="text-[11px] text-indigo-400 self-start mt-1 cursor-pointer">+ 添加问题</button>
+                                    <button @click="addCategoryQuestion(catVal)" class="text-[11px] text-indigo-400 hover:text-indigo-300 self-start mt-1 cursor-pointer">+ 添加类别问题</button>
                                 </div>
                             </div>
 
@@ -858,13 +864,14 @@
                                     <i data-lucide="building" class="w-4 h-4 text-amber-400"></i>
                                     <span>知名大厂单点针对性追问 (Company Overrides)</span>
                                 </div>
-                                <div v-for="(cVal, cKey) in inquiriesData.company_overrides" :key="cKey" class="flex flex-col gap-1.5 p-3 rounded-xl bg-slate-950 border border-slate-800">
-                                    <span class="font-bold text-amber-400 text-[11px]">【{{ cKey }}】专属追问</span>
-                                    <div v-for="(cq, cqIdx) in cVal.questions" :key="cqIdx" class="flex items-center gap-2">
-                                        <input v-model="cVal.questions[cqIdx]" class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-300 flex-1 text-xs">
+                                <div v-for="(cVal, cKey) in (inquiriesData.company_overrides || {})" :key="cKey"
+                                    class="flex flex-col gap-2 p-3.5 rounded-xl bg-slate-950 border border-slate-800">
+                                    <span class="font-bold text-amber-400 text-xs">【{{ cKey }}】专属追问</span>
+                                    <div v-for="(cq, cqIdx) in (cVal.questions || [])" :key="cqIdx" class="flex items-center gap-2">
+                                        <input v-model="cq.prompt" class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-300 flex-1 text-xs">
                                         <i @click="cVal.questions.splice(cqIdx, 1)" data-lucide="x" class="w-3.5 h-3.5 text-slate-500 hover:text-rose-400 cursor-pointer"></i>
                                     </div>
-                                    <button @click="cVal.questions.push('')" class="text-[11px] text-amber-400 self-start mt-1 cursor-pointer">+ 添加大厂问题</button>
+                                    <button @click="addCompanyQuestion(cVal)" class="text-[11px] text-amber-400 hover:text-amber-300 self-start mt-1 cursor-pointer">+ 添加大厂问题</button>
                                 </div>
                             </div>
                         </div>
@@ -883,13 +890,13 @@
                                     </span>
                                     <div>
                                         <h3 class="font-bold text-white">劳务派遣与纯外包公司黑名单 (命中一票否决)</h3>
-                                        <p class="text-xs text-slate-400">已收录 {{ blacklistData.outsourcing_companies.length }} 家外包企业，系统扫描到将自动静默跳过</p>
+                                        <p class="text-xs text-slate-400">已收录 {{ (blacklistData.outsourcing_companies || []).length }} 家外包企业，系统扫描到将自动静默跳过</p>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="flex items-center gap-2 flex-wrap bg-slate-950 border border-slate-800 rounded-2xl p-3.5 min-h-[60px]">
-                                <span v-for="(comp, cIdx) in blacklistData.outsourcing_companies" :key="cIdx"
+                                <span v-for="(comp, cIdx) in (blacklistData.outsourcing_companies || [])" :key="cIdx"
                                     class="px-3 py-1 rounded-lg bg-rose-500/20 text-rose-300 text-xs flex items-center gap-1.5 font-medium">
                                     {{ comp }}
                                     <i @click="blacklistData.outsourcing_companies.splice(cIdx, 1)" data-lucide="x" class="w-3 h-3 hover:text-white cursor-pointer"></i>
@@ -906,16 +913,16 @@
                                     <i data-lucide="alert-triangle" class="w-4 h-4"></i>
                                 </span>
                                 <div>
-                                    <h3 class="font-bold text-white">劣质岗位/套路岗位关键词过滤</h3>
-                                    <p class="text-xs text-slate-400">职位标题只要包含以下关键词，大模型将直接予以淘汰</p>
+                                    <h3 class="font-bold text-white">劣质岗位/套路岗位关键词过滤 (一票否决)</h3>
+                                    <p class="text-xs text-slate-400">已收录 {{ (blacklistData.jd_forbidden_keywords || []).length }} 个禁用词，包含关键词将直接淘汰</p>
                                 </div>
                             </div>
 
                             <div class="flex items-center gap-2 flex-wrap bg-slate-950 border border-slate-800 rounded-2xl p-3.5 min-h-[60px]">
-                                <span v-for="(kw, kIdx) in blacklistData.title_keywords" :key="kIdx"
+                                <span v-for="(kw, kIdx) in (blacklistData.jd_forbidden_keywords || [])" :key="kIdx"
                                     class="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 text-xs flex items-center gap-1.5 font-medium">
                                     {{ kw }}
-                                    <i @click="blacklistData.title_keywords.splice(kIdx, 1)" data-lucide="x" class="w-3 h-3 hover:text-white cursor-pointer"></i>
+                                    <i @click="blacklistData.jd_forbidden_keywords.splice(kIdx, 1)" data-lucide="x" class="w-3 h-3 hover:text-white cursor-pointer"></i>
                                 </span>
                                 <input @keydown.enter.prevent="addBlacklistKeyword($event)" placeholder="+输入过滤词回车添加"
                                     class="bg-transparent text-slate-200 text-xs focus:outline-none w-44">
@@ -1223,33 +1230,44 @@
 
                 // 4. 追问摸底数据
                 const inquiriesData = ref({
-                    baseline_inquiries: [
-                        { dimension: '业务线确认', question: '请问该岗位主要负责哪条核心业务线？' },
-                        { dimension: '团队自研规模', question: '咱们目前技术研发团队大概有多少人规模？' },
-                        { dimension: '纯自研系统', question: '项目是公司纯自研核心产品还是外派交付性质？' },
-                        { dimension: '加班大小周', question: '请问团队平时的作息与加班强度是怎样的？是否有大小周？' },
-                        { dimension: '上下班作息', question: '具体的弹性上下班时间是几点到几点？' }
-                    ],
-                    category_templates: {
-                        ai_agent: { questions: ['请问大模型方向主要采用开源微调还是 RAG/Agent 编排架构？'] },
-                        python_backend: { questions: ['后端主要采用 FastAPI/Django 还是高并发微服务架构？'] }
-                    },
-                    company_overrides: {
-                        '字节跳动': { questions: ['请问是属于字节哪个业务大方向（抖音/电商/飞书/火山）？'] },
-                        '阿里巴巴': { questions: ['请问是属于淘天、阿里云还是国际化业务线？'] }
-                    }
+                    baseline_inquiries: { items: {} },
+                    category_inquiry_templates: {},
+                    company_overrides: {}
                 });
+
+                const addBaselineInquiry = () => {
+                    if (!inquiriesData.value.baseline_inquiries) {
+                        inquiriesData.value.baseline_inquiries = { enabled: true, max_questions_per_turn: 1, items: {} };
+                    }
+                    if (!inquiriesData.value.baseline_inquiries.items) {
+                        inquiriesData.value.baseline_inquiries.items = {};
+                    }
+                    const key = 'custom_dim_' + (Object.keys(inquiriesData.value.baseline_inquiries.items).length + 1);
+                    inquiriesData.value.baseline_inquiries.items[key] = {
+                        priority: 6,
+                        key: key,
+                        question_prompt: '想向您请教一下，咱们在...方面的具体安排是怎样的呢？'
+                    };
+                    nextTick(() => lucide.createIcons());
+                };
+
+                const addCategoryQuestion = (catVal) => {
+                    if (!catVal.questions) catVal.questions = [];
+                    catVal.questions.push({ id: 'cat_' + Date.now(), prompt: '' });
+                    nextTick(() => lucide.createIcons());
+                };
+
+                const addCompanyQuestion = (cVal) => {
+                    if (!cVal.questions) cVal.questions = [];
+                    cVal.questions.push({ id: 'comp_' + Date.now(), prompt: '' });
+                    nextTick(() => lucide.createIcons());
+                };
 
                 // 5. 避坑黑名单数据
                 const blacklistData = ref({
-                    outsourcing_companies: [
-                        '中软国际', '软通动力', '文思海辉', '博彦科技', '法本信息', '宇信科技',
-                        '诚迈科技', '易宝软件', '佰钧成', '神州信息', '润和软件', '拓保软件'
-                    ],
-                    title_keywords: [
-                        '兼职', '无底薪', '销售性质', '电话客服', '招募合伙人', '居家手工', '话务员', '培训机构', '实习生'
-                    ],
-                    company_names: []
+                    outsourcing_companies: [],
+                    jd_forbidden_keywords: [],
+                    custom_company_blacklist: []
                 });
 
                 const addBlacklistCompany = (e) => {
@@ -1266,9 +1284,9 @@
                 const addBlacklistKeyword = (e) => {
                     const val = e.target.value.trim();
                     if (!val) return;
-                    if (!blacklistData.value.title_keywords) blacklistData.value.title_keywords = [];
-                    if (!blacklistData.value.title_keywords.includes(val)) {
-                        blacklistData.value.title_keywords.push(val);
+                    if (!blacklistData.value.jd_forbidden_keywords) blacklistData.value.jd_forbidden_keywords = [];
+                    if (!blacklistData.value.jd_forbidden_keywords.includes(val)) {
+                        blacklistData.value.jd_forbidden_keywords.push(val);
                     }
                     e.target.value = '';
                     nextTick(() => lucide.createIcons());
@@ -1461,6 +1479,9 @@
                     removeProfileRole,
                     addProjectItem,
                     inquiriesData,
+                    addBaselineInquiry,
+                    addCategoryQuestion,
+                    addCompanyQuestion,
                     blacklistData,
                     addBlacklistCompany,
                     addBlacklistKeyword,
