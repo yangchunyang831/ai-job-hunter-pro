@@ -8,18 +8,18 @@ basics:
     faculty: 计算机科学与工程学院
     major: 区块链工程
   credentials:
-  - C1 驾照 (熟练驾驶)
+  - 已取得 C1 驾驶证
   - 全日制统招本科学历
   target_roles:
   - 综合行政 / 办公室文员
   - 运营专员 / 运营助理
   - 技术支持 / 桌面IT运维
-  - 商务接待 / 商务司机
+  - 商务接待 / 商务助理
   - 供应链 / 仓储管理
   - 数据分析 / 数据录入
   - 储备干部 / 项目助理
 skills:
-  driver_license: C1 驾照熟练驾驶
+  driver_license: 已取得 C1 驾驶证
   office_tools: 精通 Excel, Word, PPT, 飞书/钉钉等办公协同软件
   computer_basics: 计算机网络基础、数据库基础、区块链基础、软硬件日常维护
   general_abilities: 逻辑严谨、执行力强、吃苦耐劳、善于跨部门沟通协调
@@ -58,16 +58,16 @@ boss_filters:
   - '808'
   job_type: '1901'
 highlight_projects:
-- project_name: 企业级综合运营与信息管理系统协同
-  role: 项目助理 / 核心成员
+- project_name: AI Job Hunter Pro - 企业级全流程智能求职与拟人化沟通中台
+  role: 独立设计与开发者
   highlights:
-  - 负责业务流程梳理、数据台账整理与跨部门协同推进，保障项目按期保质交付
-  - 利用计算机背景对日常办公流程进行自动化优化，提升工作效率 40%
-- project_name: 区块链数据分析与智能合约实验项目
-  role: 主导开发者
+  - 基于 Chrome DevTools Protocol 协议实现无侵入式会话调度与岗位自动解析
+  - 设计全国 4 级空间地理辐射筛选与零 Token 人身安全/反诈风控一票否决防火墙
+- project_name: 基于 FISCO BCOS 的运动打卡与健康数据存证系统 (毕业设计)
+  role: 核心独立设计与开发者
   highlights:
-  - 完成区块链数据流分析与节点网络搭建，具备严密的逻辑思维与排查能力
-  - 撰写详尽的项目文档与技术总结，获得学院优秀项目认证
+  - 编写用户运动打卡记录上链与防篡改验证的 Solidity 智能合约
+  - 搭建 FISCO BCOS 底层区块链节点与 WeBASE 可视化合约管理体系
 deal_breakers:
 - 严禁任何涉诈、涉赌、跨境出境、海外工作等有人身安全隐患的岗位
 - 拒绝无固定底薪纯提成、传销、刷单、收费培训后上岗等套路

@@ -1,7 +1,7 @@
 user_residence:
   city: 怀化
-  district: 安江镇
-  address: 安江镇裕湘花园
+  district: 洪江市
+  address: 洪江市
   latitude: 27.5601
   longitude: 109.9985
   province: 湖南
@@ -12,13 +12,13 @@ enabled_tiers:
 - tier4_remote_or_national
 tiers_config:
   tier1_local:
-    name: 'Tier 1: 10km 本地神仙通勤圈 (怀化安江)'
+    name: 'Tier 1: 15km 本地通勤圈 (怀化洪江市)'
     enabled: true
     max_distance_km: 15.0
     min_score: 75
     salary_ratio: 0.9
     priority_bonus: 15
-    greeting_tone: 突出居住在安江附近、通勤极度稳定、可随时到岗
+    greeting_tone: 突出居住在洪江市本地、通勤极度稳定、可随时到岗
   tier2_adjacent:
     name: 'Tier 2: 邻近核心地级市圈'
     enabled: true
