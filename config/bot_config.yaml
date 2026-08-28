@@ -1,0 +1,21 @@
+feishu:
+  enabled: true
+  webhook_url: https://open.feishu.cn/open-apis/bot/v2/hook/your_feishu_webhook_token_here
+  secret: ''
+  notify_events:
+    interview_invite: true
+    contact_exchange: true
+    daily_summary: true
+wechat:
+  enabled: true
+  channel: wecom_webhook
+  webhook_url: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your_wecom_key_here
+  pushplus_token: ''
+  serverchan_sendkey: ''
+  notify_events:
+    interview_invite: true
+    contact_exchange: true
+contact_greeting_templates:
+  wechat_friend_request: 您好，我是BOSS直聘沟通的杨春，应聘贵司岗位，特来添加您的微信，已备好个人简历，期待与您进一步交流！
+  feishu_friend_request: 您好，我是应聘贵司岗位的杨春（全日制统招本科/区块链工程/C1驾照），特来添加您的飞书，已同步简历，请多关照！
+  phone_sms_followup: 【求职拜访】HR老师您好，我是BOSS直聘沟通的求职者杨春，已将简历发送至您的邮箱/微信，期待能有进一步沟通机会，祝您工作顺利！

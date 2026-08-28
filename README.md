@@ -11,18 +11,18 @@
 ### 🌟 核心特色
 1. **真实浏览器 CDP 直连（极低风控）**：复用日常 Chrome 浏览器的登录态、Cookie、指纹与扩展插件，零 WebDriver 自动化指纹。
 2. **多城市与四级空间地理辐射筛选**：
-   - **Tier 1 本地通勤圈（$\le 10\text{km}$）**：家门口通勤神仙岗，适度放宽门槛。
+   - **Tier 1 本地通勤圈（$\le 15\text{km}$）**：家门口通勤神仙岗，极速响应。
    - **Tier 2 邻近核心地级市**：同城高铁都市圈覆盖。
    - **Tier 3 省内中心城市**：薪资溢价覆盖异地租房成本。
    - **Tier 4 全国优质机会 / 远程办公（Remote）**：专属绿色通道，最高优先级。
-3. **全方位基础工作信息摸底（拒绝信息不对称）**：
-   - AI 自动在多轮沟通中摸清：**薪资结构（Base/绩效/年终）、试用期打折与五险一金缴纳、工作时间（965/996/大小周/弹性）、业务属性（自研 vs 外包驻场）、办公地点**。
-4. **职位类别与单岗位自定义追问引擎**：
-   - **类别级模板**：针对 AI 岗、后端架构岗、前端岗定制专业技术与业务痛点提问。
-   - **岗位级覆写**：针对特定公司/团队指定专属问题。
-   - **渐进式拟人化提问**：杜绝“查户口式”审讯，采用自然、礼貌的交谈节奏。
-5. **人机协同（HITL）与熔断防护**：
-   - 关键节点（面试邀约、索要微信/电话、薪资谈判、滑块验证码）自动暂停并推送飞书/微信，人工无缝接管。
+3. **全方位人身安全合规与反诈防火墙**：
+   - 零 Token 快速拦截境外高危、涉诈灰产、刷单押金、虚假套路岗位，全方位守护求职安全。
+4. **微信 & 飞书 Bot 双通道智能联动中台**：
+   - 当 HR 留下微信/手机号或发出约面邀约时，自动生成标准化得体的加微打招呼申请词，并向飞书/企业微信群推送高亮通知卡片。
+5. **全方位基础工作信息摸底与拟人化追问引擎**：
+   - AI 自动在多轮沟通中摸清：**薪资结构（Base/绩效/年终）、试用期打折与五险一金缴纳、工作时间（965/996/大小周/弹性）、业务属性、办公地点**。
+6. **精美个人简历生成中台**：
+   - 内置 HTML / Markdown / A4 像素级高清 PDF 打印级简历自动生成引擎。
 
 ---
 
@@ -32,20 +32,25 @@
 d:\招聘\
 ├── .gitignore                           # Git 忽略配置
 ├── README.md                            # 项目全景概览
+├── 个人简历/                             # 候选人专属三版简历库 (HTML / PDF / Markdown / 证件照)
 ├── docs/                                # 系统核心技术与业务规范
 │   ├── 01_architecture_design.md        # 系统全层级架构与 CDP 控制机制
 │   ├── 02_screening_strategy.md         # 多城市四级地理与多维筛选过滤规范
 │   ├── 03_dialogue_and_inquiry_engine.md# 多轮沟通状态机、基础信息核实与自定义追问规范
 │   └── 04_risk_control_and_safety.md    # 平台防封号与拟人化风控实践手册
 ├── config/                              # 配置模板体系
+│   ├── bot_config.yaml                  # 微信与飞书 Bot 智能通知与打招呼词配置
 │   ├── cities.yaml                      # 多城市与空间辐射圈配置
 │   ├── candidate_profile.yaml           # 候选人标准简历画像与事实边界库
 │   ├── inquiry_templates.yaml           # 职位类别与单岗位自定义追问模板
 │   └── blacklist.yaml                   # 企业、行业与套路关键词黑名单
 └── src/                                 # 核心代码架构
-    ├── __init__.py
-    ├── config_loader.py                 # 配置加载与 Pydantic 校验器
-    └── schemas.py                       # 数据模型与枚举定义
+    ├── bot_manager.py                   # 微信与飞书 Bot 多通道分发器
+    ├── cdp_controller.py                # CDP 浏览器控制与岗位卡片解析
+    ├── scoring_engine.py                # 评分引擎与人身安全反诈防火墙
+    ├── conversation_fsm.py              # 多轮沟通有限状态机
+    ├── db_storage.py                    # SQLite 数据存储层
+    └── web/                             # Web GUI 可视化中台
 ```
 
 ---
@@ -66,10 +71,10 @@ chrome.exe --remote-debugging-port=9222 --user-data-dir="C:\chrome_debug_profile
 在打开的 Chrome 中打开 [BOSS直聘](https://www.zhipin.com) 并手动扫码登录。
 
 ### 3. 配置项目参数
-根据个人情况修改 `config/` 目录下的配置文件：
-1. `config/candidate_profile.yaml`：填入你的技术履历、亮点项目、期望薪资底线。
-2. `config/cities.yaml`：填入你的居住地坐标与目标城市辐射规则。
-3. `config/inquiry_templates.yaml`：配置你想让 AI 代问的问题。
+根据个人情况修改 `config/` 目录下的配置文件或直接在 Web GUI 中可视化修改：
+1. `config/candidate_profile.yaml`：个人履历画像、期望薪资底线。
+2. `config/cities.yaml`：居住地与空间辐射规则。
+3. `config/bot_config.yaml`：飞书与微信 Webhook 及打招呼模板。
 
 ### 4. 使用项目专属虚拟环境 (.venv) 与 GUI 运行
 本项目内置了独立的 `.venv` 虚拟环境与 **高颜值可视化 Web GUI 控制中台**：
@@ -92,7 +97,7 @@ chrome.exe --remote-debugging-port=9222 --user-data-dir="C:\chrome_debug_profile
 # 全自动运行 (限制单日最多投递 35 个)
 .\.venv\Scripts\python main.py run --max-apply 35
 
-# 运行全套自动化测试 (17 项测试)
+# 运行全套自动化测试 (27 项测试)
 .\.venv\Scripts\python -m unittest discover -s tests -p "test_*.py"
 ```
 

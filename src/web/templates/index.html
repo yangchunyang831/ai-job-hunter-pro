@@ -930,6 +930,128 @@
                         </div>
                     </div>
 
+                    <!-- 6. 微信与飞书 Bot 智能联动中台 (selectedConfig === 'bot') -->
+                    <div v-else-if="selectedConfig === 'bot' && configViewMode === 'visual' && botData.feishu && botData.wechat"
+                        class="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 max-h-[calc(100vh-180px)]">
+
+                        <!-- 测试与运行状态快捷触发 -->
+                        <div class="glass rounded-2xl p-5 flex items-center justify-between border-indigo-500/30">
+                            <div class="flex items-center gap-3">
+                                <span class="p-2 rounded-xl bg-indigo-600/30 text-indigo-400">
+                                    <i data-lucide="bot" class="w-5 h-5"></i>
+                                </span>
+                                <div>
+                                    <h3 class="font-bold text-white text-sm">微信 & 飞书 Bot 多通道智能联动中台</h3>
+                                    <p class="text-xs text-slate-400">当 HR 索要简历或留下微信号/手机号时，自动生成标准化加微打招呼语并向 Bot 推送高亮警报</p>
+                                </div>
+                            </div>
+                            <button @click="testBotPush" :disabled="isTestingBot"
+                                class="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-medium text-xs flex items-center gap-1.5 shadow-lg shadow-indigo-500/25 transition cursor-pointer disabled:opacity-50">
+                                <i data-lucide="zap" class="w-4 h-4"></i>
+                                <span>{{ isTestingBot ? '正在模拟推送...' : '⚡ 发送模拟约面 & 生成加微词' }}</span>
+                            </button>
+                        </div>
+
+                        <!-- 模拟推送结果弹窗/展示 -->
+                        <div v-if="botTestResult" class="p-4 rounded-xl bg-indigo-950/60 border border-indigo-500/50 flex flex-col gap-2 text-xs text-slate-200">
+                            <div class="flex items-center justify-between font-bold text-indigo-300">
+                                <span>🎉 模拟面试邀约与话术提取测试成功</span>
+                                <i @click="botTestResult = null" data-lucide="x" class="w-4 h-4 cursor-pointer hover:text-white"></i>
+                            </div>
+                            <div><strong>提取到 HR 联系方式：</strong> <span class="text-amber-400 font-mono">{{ botTestResult.detected_phone || '13800000000' }}</span></div>
+                            <div><strong>自动生成微信申请打招呼词 (一键复制)：</strong></div>
+                            <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-emerald-300 font-medium select-all">
+                                {{ botTestResult.wechat_greeting }}
+                            </div>
+                        </div>
+
+                        <!-- 飞书与微信双列配置 -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- 飞书配置 -->
+                            <div class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-sky-500/30">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2 text-sm font-bold text-white">
+                                        <i data-lucide="message-square" class="w-4 h-4 text-sky-400"></i>
+                                        <span>飞书 (Feishu) 群机器人</span>
+                                    </div>
+                                    <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                                        <input type="checkbox" v-model="botData.feishu.enabled" class="rounded accent-sky-500">
+                                        <span>启用飞书推送</span>
+                                    </label>
+                                </div>
+                                <div class="flex flex-col gap-1.5 text-xs">
+                                    <label class="text-slate-400">飞书自定义机器人 Webhook URL</label>
+                                    <input v-model="botData.feishu.webhook_url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 font-mono">
+                                </div>
+                                <div v-if="botData.feishu.notify_events" class="flex flex-col gap-1 text-xs">
+                                    <span class="text-slate-400">触发推送事件</span>
+                                    <div class="flex items-center gap-4 mt-1">
+                                        <label class="flex items-center gap-1.5 cursor-pointer text-slate-300">
+                                            <input type="checkbox" v-model="botData.feishu.notify_events.interview_invite" class="rounded accent-sky-500">
+                                            <span>面试邀约/微信号</span>
+                                        </label>
+                                        <label class="flex items-center gap-1.5 cursor-pointer text-slate-300">
+                                            <input type="checkbox" v-model="botData.feishu.notify_events.daily_summary" class="rounded accent-sky-500">
+                                            <span>每日投递日报</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 微信 / 企业微信配置 -->
+                            <div class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-emerald-500/30">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2 text-sm font-bold text-white">
+                                        <i data-lucide="send" class="w-4 h-4 text-emerald-400"></i>
+                                        <span>微信 / 企业微信 (WeChat / WeCom)</span>
+                                    </div>
+                                    <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                                        <input type="checkbox" v-model="botData.wechat.enabled" class="rounded accent-emerald-500">
+                                        <span>启用微信推送</span>
+                                    </label>
+                                </div>
+                                <div class="flex flex-col gap-1.5 text-xs">
+                                    <label class="text-slate-400">推送通道模式</label>
+                                    <select v-model="botData.wechat.channel" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200">
+                                        <option value="wecom_webhook">企业微信群机器人 Webhook</option>
+                                        <option value="pushplus">PushPlus (个人微信直接弹窗通知)</option>
+                                    </select>
+                                </div>
+                                <div v-if="botData.wechat.channel === 'wecom_webhook'" class="flex flex-col gap-1.5 text-xs">
+                                    <label class="text-slate-400">企业微信群机器人 Webhook URL</label>
+                                    <input v-model="botData.wechat.webhook_url" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx"
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 font-mono">
+                                </div>
+                                <div v-else class="flex flex-col gap-1.5 text-xs">
+                                    <label class="text-slate-400">PushPlus 用户 Token</label>
+                                    <input v-model="botData.wechat.pushplus_token" placeholder="输入 PushPlus 个人 Token"
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 font-mono">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 自动生成加微打招呼语模板配置 -->
+                        <div v-if="botData.contact_greeting_templates" class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-purple-500/30 text-xs">
+                            <div class="flex items-center gap-2 text-sm font-bold text-white">
+                                <i data-lucide="file-text" class="w-4 h-4 text-purple-400"></i>
+                                <span>添加 HR 微信 / 飞书 自动申请话术模板</span>
+                            </div>
+                            <div class="flex flex-col gap-2">
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-slate-400">微信好友申请打招呼词 (50字以内)</label>
+                                    <input v-model="botData.contact_greeting_templates.wechat_friend_request"
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200">
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-slate-400">飞书好友申请打招呼词</label>
+                                    <input v-model="botData.contact_greeting_templates.feishu_friend_request"
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- 6. 通用 YAML 源码编辑器 (用于高级代码模式) -->
                     <div v-else class="flex-1 glass rounded-2xl p-4 flex flex-col">
                         <textarea v-model="configYamlContent"
@@ -991,7 +1113,8 @@
                     { key: 'filters', name: '🎯 BOSS 官方多维筛选 (filters)' },
                     { key: 'profile', name: '👤 个人简历画像 (profile)' },
                     { key: 'inquiries', name: '❓ 追问与摸底引擎 (inquiries)' },
-                    { key: 'blacklist', name: '🚫 避坑黑名单库 (blacklist)' }
+                    { key: 'blacklist', name: '🚫 避坑黑名单库 (blacklist)' },
+                    { key: 'bot', name: '🤖 微信/飞书 Bot (bot)' }
                 ];
 
                 const selectedConfig = ref('cities');
@@ -1292,6 +1415,35 @@
                     nextTick(() => lucide.createIcons());
                 };
 
+                // 6. 微信与飞书 Bot 数据
+                const botData = ref({
+                    feishu: { enabled: true, webhook_url: '', notify_events: { interview_invite: true, daily_summary: true } },
+                    wechat: { enabled: true, channel: 'wecom_webhook', webhook_url: '', pushplus_token: '', notify_events: { interview_invite: true } },
+                    contact_greeting_templates: {
+                        wechat_friend_request: '您好，我是BOSS直聘沟通的杨春，特来添加您的微信，已备好简历，期待与您交流！',
+                        feishu_friend_request: '您好，我是应聘贵司岗位的杨春，特来添加您的飞书，已同步简历，请多关照！'
+                    }
+                });
+
+                const isTestingBot = ref(false);
+                const botTestResult = ref(null);
+
+                const testBotPush = async () => {
+                    isTestingBot.value = true;
+                    botTestResult.value = null;
+                    try {
+                        const res = await fetch('/api/bot/test', { method: 'POST' });
+                        const json = await res.json();
+                        botTestResult.value = json.result;
+                        nextTick(() => lucide.createIcons());
+                    } catch (e) {
+                        console.error(e);
+                        alert('发送测试失败: ' + e);
+                    } finally {
+                        isTestingBot.value = false;
+                    }
+                };
+
                 const fetchStatus = async () => {
                     try {
                         const res = await fetch('/api/status');
@@ -1335,6 +1487,16 @@
                             const dataRes = await fetch(`/api/config/blacklist/data`);
                             const json = await dataRes.json();
                             blacklistData.value = json.data || { outsourcing_companies: [], title_keywords: [], company_names: [] };
+                        } else if (name === 'bot') {
+                            const dataRes = await fetch(`/api/config/bot/data`);
+                            const json = await dataRes.json();
+                            const d = json.data || {};
+                            if (!d.feishu) d.feishu = { enabled: true, webhook_url: '', notify_events: {} };
+                            if (!d.feishu.notify_events) d.feishu.notify_events = { interview_invite: true, daily_summary: true };
+                            if (!d.wechat) d.wechat = { enabled: true, channel: 'wecom_webhook', webhook_url: '', pushplus_token: '', notify_events: {} };
+                            if (!d.wechat.notify_events) d.wechat.notify_events = { interview_invite: true };
+                            if (!d.contact_greeting_templates) d.contact_greeting_templates = {};
+                            botData.value = d;
                         }
                         const res = await fetch(`/api/config/${name}`);
                         const data = await res.json();
@@ -1354,6 +1516,7 @@
                             else if (selectedConfig.value === 'profile') payload = profileData.value;
                             else if (selectedConfig.value === 'inquiries') payload = inquiriesData.value;
                             else if (selectedConfig.value === 'blacklist') payload = blacklistData.value;
+                            else if (selectedConfig.value === 'bot') payload = botData.value;
 
                             const res = await fetch(`/api/config/${selectedConfig.value}/data`, {
                                 method: 'POST',
@@ -1485,6 +1648,10 @@
                     blacklistData,
                     addBlacklistCompany,
                     addBlacklistKeyword,
+                    botData,
+                    isTestingBot,
+                    botTestResult,
+                    testBotPush,
                     jobsList,
                     logs,
                     fetchJobs,

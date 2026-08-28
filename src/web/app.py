@@ -144,8 +144,21 @@ CONFIG_FILES = {
     "filters": "candidate_profile.yaml",
     "profile": "candidate_profile.yaml",
     "inquiries": "inquiry_templates.yaml",
-    "blacklist": "blacklist.yaml"
+    "blacklist": "blacklist.yaml",
+    "bot": "bot_config.yaml"
 }
+
+@app.post("/api/bot/test")
+async def test_bot_notification():
+    from src.bot_manager import BotManager
+    bm = BotManager()
+    res = bm.notify_interview_event(
+        company="测试大厂科技 (怀化研发中心)",
+        job_title="综合行政专员 / 商务接待",
+        hr_name="刘HR",
+        message="您好杨春，看您持有C1驾照且有计算机本科素养，明天下午2点方便加微信 13800000000 沟通初试吗？"
+    )
+    return {"status": "success", "result": res}
 
 @app.get("/api/config/{config_name}")
 async def get_config(config_name: str):

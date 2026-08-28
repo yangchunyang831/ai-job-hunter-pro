@@ -111,6 +111,28 @@ class TestWebAPI(unittest.TestCase):
         save_resp = self.client.post("/api/config/blacklist/data", json={"data": data["data"]})
         self.assertEqual(save_resp.status_code, 200)
 
+    def test_get_and_save_bot_data(self):
+        """测试微信与飞书 Bot 配置 JSON 读写接口"""
+        resp = self.client.get("/api/config/bot/data")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("data", data)
+        self.assertIn("feishu", data["data"])
+        self.assertIn("wechat", data["data"])
+
+        # 保存测试
+        save_resp = self.client.post("/api/config/bot/data", json={"data": data["data"]})
+        self.assertEqual(save_resp.status_code, 200)
+
+    def test_bot_notification_api(self):
+        """测试模拟面试与话术提取接口"""
+        resp = self.client.post("/api/bot/test")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["status"], "success")
+        self.assertIn("wechat_greeting", data["result"])
+        self.assertIn("杨春", data["result"]["wechat_greeting"])
+
 
 if __name__ == "__main__":
     unittest.main()

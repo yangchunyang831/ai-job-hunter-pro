@@ -6,26 +6,27 @@ import logging
 import httpx
 from typing import Optional, Dict, Any
 
+from src.bot_manager import BotManager
+
 logger = logging.getLogger(__name__)
 
 
 class NotificationManager:
-    """统一通知管理器"""
+    """统一通知与微信/飞书多通道管理器"""
     def __init__(self, feishu_webhook: Optional[str] = None, pushplus_token: Optional[str] = None):
+        self.bot_manager = BotManager()
         self.feishu_webhook = feishu_webhook or os.getenv("FEISHU_WEBHOOK_URL")
         self.pushplus_token = pushplus_token or os.getenv("PUSHPLUS_TOKEN")
 
     def send_interview_alert(self, company: str, job_title: str, hr_name: str, message: str):
-        """HR 邀约面试或索要联系方式时触发高优先级警报"""
-        title = f"🎉 收到面试邀约/联系方式请求 [{company}]"
-        content = (
-            f"**公司**: {company}\n"
-            f"**岗位**: {job_title}\n"
-            f"**HR**: {hr_name}\n"
-            f"**最新消息**: {message}\n\n"
-            f"⚠️ **AI 已自动暂停该会话回复，请立即打开浏览器手动接管！**"
+        """HR 邀约面试或索要联系方式时触发高优先级警报与微信/飞书智能触达"""
+        res = self.bot_manager.notify_interview_event(
+            company=company,
+            job_title=job_title,
+            hr_name=hr_name,
+            message=message
         )
-        self._dispatch(title, content, alert_type="INTERVIEW")
+        self._dispatch(res["title"], f"**公司**: {company}\n**岗位**: {job_title}\n**HR**: {hr_name}\n**最新消息**: {message}\n\n📋 **微信好友申请打招呼词**:\n> {res['wechat_greeting']}\n\n⚠️ **AI 已自动暂停该会话回复，请立即打开浏览器手动接管！**", alert_type="INTERVIEW")
 
     def send_captcha_alert(self):
         """触发滑块验证码时的紧急警报"""

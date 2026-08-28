@@ -72,27 +72,26 @@ async def run_gui_tests():
         await page.screenshot(path=str(screenshots_dir / "06_config_blacklist.png"))
         print("   ✅ 避坑黑名单库视图正常，已截图: 06_config_blacklist.png")
 
+        # 切换到 Bot 配置视图
+        print("7. 正在切换到【🤖 微信/飞书 Bot 联动】...")
+        bot_btn = page.locator("button:has-text('Bot')")
+        await bot_btn.click()
+        await page.wait_for_timeout(1000)
+        # 点击模拟测试按钮
+        test_bot_btn = page.locator("button:has-text('模拟')")
+        if await test_bot_btn.count() > 0:
+            await test_bot_btn.first.click()
+            await page.wait_for_timeout(1000)
+        await page.screenshot(path=str(screenshots_dir / "08_config_bot.png"))
+        print("   ✅ 微信与飞书 Bot 视图及模拟测试正常，已截图: 08_config_bot.png")
+
         # 切换到 Tab 3: 实时运行日志
-        print("7. 正在切换到【📜 实时运行日志】...")
+        print("8. 正在切换到【📜 实时运行日志】...")
         logs_tab_btn = page.locator("button:has-text('实时运行日志')")
         await logs_tab_btn.click()
         await page.wait_for_timeout(1000)
         await page.screenshot(path=str(screenshots_dir / "07_console_logs.png"))
         print("   ✅ 实时日志视图正常，已截图: 07_console_logs.png")
-
-        # 重新回到 Inquiries 和 Blacklist 重新截图确认
-        print("8. 正在对更新后的 Inquiries 和 Blacklist 页面进行高清复检截图...")
-        await config_tab_btn.click()
-        await page.wait_for_timeout(500)
-        await inquiries_btn.click()
-        await page.wait_for_timeout(500)
-        await page.screenshot(path=str(screenshots_dir / "05_config_inquiries.png"))
-        print("   ✅ 追问与摸底引擎最新视图，已截图: 05_config_inquiries.png")
-
-        await blacklist_btn.click()
-        await page.wait_for_timeout(500)
-        await page.screenshot(path=str(screenshots_dir / "06_config_blacklist.png"))
-        print("   ✅ 避坑黑名单库最新视图，已截图: 06_config_blacklist.png")
 
         await browser.close()
 
