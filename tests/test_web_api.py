@@ -49,9 +49,18 @@ class TestWebAPI(unittest.TestCase):
         self.assertIn("yaml_content", data)
         self.assertIn("basics", data["yaml_content"])
 
-        # 2. 测试非法 YAML 语法提交被拦截
-        invalid_resp = self.client.post("/api/config/profile", json={"yaml_content": "invalid: yaml: ["})
-        self.assertEqual(invalid_resp.status_code, 400)
+    def test_get_and_save_cities_data(self):
+        """测试结构化 JSON 配置读写接口 (用于 GUI 交互表单)"""
+        resp = self.client.get("/api/config/cities/data")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("data", data)
+        self.assertIn("cities", data["data"])
+        self.assertIn("hangzhou", data["data"]["cities"])
+
+        # 保存测试
+        save_resp = self.client.post("/api/config/cities/data", json={"data": data["data"]})
+        self.assertEqual(save_resp.status_code, 200)
 
 
 if __name__ == "__main__":

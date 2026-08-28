@@ -215,23 +215,280 @@
                 </div>
 
                 <!-- TAB 2: 可视化配置中心 -->
-                <div v-if="currentTab === 'config'" class="flex-1 flex flex-col gap-4">
-                    <div class="flex items-center justify-between">
+                <div v-if="currentTab === 'config'" class="flex-1 flex flex-col gap-4 overflow-hidden">
+                    <!-- 顶部配置分类与视图切换 -->
+                    <div class="flex items-center justify-between flex-wrap gap-3">
                         <div class="flex items-center gap-2">
                             <button v-for="cf in configTypes" :key="cf.key" @click="loadConfig(cf.key)"
-                                class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition"
-                                :class="selectedConfig === cf.key ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 text-slate-400 hover:text-white'">
+                                class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer"
+                                :class="selectedConfig === cf.key ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30' : 'bg-slate-800 text-slate-400 hover:text-white'">
                                 {{ cf.name }}
                             </button>
                         </div>
 
-                        <button @click="saveCurrentConfig" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 transition">
-                            <i data-lucide="save" class="w-3.5 h-3.5"></i>
-                            <span>保存并生效配置</span>
-                        </button>
+                        <div class="flex items-center gap-3">
+                            <!-- 视图模式切换 -->
+                            <div class="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800 text-xs">
+                                <button @click="configViewMode = 'visual'" class="px-3 py-1 rounded-md font-medium transition cursor-pointer"
+                                    :class="configViewMode === 'visual' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'">
+                                    🎨 图形交互视图
+                                </button>
+                                <button @click="configViewMode = 'yaml'" class="px-3 py-1 rounded-md font-medium transition cursor-pointer"
+                                    :class="configViewMode === 'yaml' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'">
+                                    📝 YAML 源码
+                                </button>
+                            </div>
+
+                            <button @click="saveCurrentConfig" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-600/25 transition cursor-pointer">
+                                <i data-lucide="save" class="w-3.5 h-3.5"></i>
+                                <span>保存并实时生效</span>
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="flex-1 glass rounded-2xl p-4 flex flex-col">
+                    <!-- 1. 空间辐射图形交互模式 (selectedConfig === 'cities') -->
+                    <div v-if="selectedConfig === 'cities' && configViewMode === 'visual' && citiesData.cities"
+                        class="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 max-h-[calc(100vh-180px)]">
+
+                        <!-- 目标城市选择与激活条 -->
+                        <div class="glass rounded-2xl p-4 flex flex-col gap-3">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2 text-sm font-bold text-white">
+                                    <i data-lucide="map" class="w-4 h-4 text-indigo-400"></i>
+                                    <span>目标城市与辐射中心选择</span>
+                                </div>
+                                <span class="text-xs text-slate-400">已激活 {{ citiesData.active_cities.length }} 个城市进行自动检索</span>
+                            </div>
+
+                            <div class="flex items-center gap-2.5 flex-wrap">
+                                <div v-for="(cVal, cKey) in citiesData.cities" :key="cKey"
+                                    @click="currentCityKey = cKey"
+                                    class="px-4 py-2 rounded-xl border transition flex items-center gap-2.5 cursor-pointer"
+                                    :class="currentCityKey === cKey ? 'bg-indigo-600/20 border-indigo-500 text-white font-bold' : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'">
+                                    <input type="checkbox" :checked="citiesData.active_cities.includes(cKey)" @click.stop="toggleCityActive(cKey)"
+                                        class="rounded text-indigo-600 focus:ring-0 cursor-pointer">
+                                    <span>{{ cVal.city_name }}</span>
+                                    <span v-if="cVal.is_primary_residence" class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">主居住地</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 选定城市详细配置 -->
+                        <div v-if="currentCityConfig" class="flex flex-col gap-4">
+                            <!-- 居住地锚点坐标 -->
+                            <div class="glass rounded-2xl p-5 flex flex-col gap-3.5">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2 text-sm font-bold text-emerald-400">
+                                        <i data-lucide="home" class="w-4 h-4"></i>
+                                        <span>【{{ currentCityConfig.city_name }}】居住地锚点与商圈定位</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs text-slate-500">快捷坐标填充:</span>
+                                        <button @click="fillPresetAnchor('hangzhou')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300">未来科技城</button>
+                                        <button @click="fillPresetAnchor('shanghai')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300">张江高科</button>
+                                        <button @click="fillPresetAnchor('shenzhen')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300">南山科技园</button>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-slate-400">居住地/商圈名称</label>
+                                        <input v-model="currentCityConfig.anchor.name" type="text"
+                                            class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+                                    </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-slate-400">所属行政区</label>
+                                        <input v-model="currentCityConfig.anchor.district" type="text" placeholder="如: 余杭区 / 浦东新区"
+                                            class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+                                    </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-slate-400">中心纬度 (Latitude)</label>
+                                        <input v-model.number="currentCityConfig.anchor.latitude" type="number" step="0.0001"
+                                            class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+                                    </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-slate-400">中心经度 (Longitude)</label>
+                                        <input v-model.number="currentCityConfig.anchor.longitude" type="number" step="0.0001"
+                                            class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 四级辐射漏斗交互卡片 -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Tier 1: 本地极限通勤圈 -->
+                                <div class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-emerald-500/30">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2">
+                                            <span class="w-3 h-3 rounded-full bg-emerald-500 shadow-md shadow-emerald-500/50"></span>
+                                            <h4 class="font-bold text-sm text-white">Tier 1: 本地神仙通勤圈</h4>
+                                        </div>
+                                        <span class="text-xs text-emerald-400 font-bold">+{{ currentCityConfig.tiers.tier1_local_commute.priority_bonus }}分 特权加分</span>
+                                    </div>
+
+                                    <div class="flex flex-col gap-3 text-xs">
+                                        <div>
+                                            <div class="flex justify-between text-slate-300 mb-1">
+                                                <span>辐射半径门槛 (公里)</span>
+                                                <span class="font-bold text-emerald-400 text-sm">≤ {{ currentCityConfig.tiers.tier1_local_commute.max_distance_km }} km</span>
+                                            </div>
+                                            <input v-model.number="currentCityConfig.tiers.tier1_local_commute.max_distance_km" type="range" min="3" max="30" step="0.5"
+                                                class="w-full accent-emerald-500 cursor-pointer">
+                                        </div>
+
+                                        <div>
+                                            <div class="flex justify-between text-slate-300 mb-1">
+                                                <span>及格分线 (放宽门槛)</span>
+                                                <span class="font-bold text-emerald-400">{{ currentCityConfig.tiers.tier1_local_commute.min_score_required }} 分</span>
+                                            </div>
+                                            <input v-model.number="currentCityConfig.tiers.tier1_local_commute.min_score_required" type="range" min="60" max="90"
+                                                class="w-full accent-emerald-500 cursor-pointer">
+                                        </div>
+
+                                        <div>
+                                            <div class="flex justify-between text-slate-300 mb-1">
+                                                <span>薪资调谐比例 (零通勤换降薪)</span>
+                                                <span class="font-bold text-emerald-400">{{ (currentCityConfig.tiers.tier1_local_commute.salary_adjustment_ratio * 100).toFixed(0) }}%</span>
+                                            </div>
+                                            <input v-model.number="currentCityConfig.tiers.tier1_local_commute.salary_adjustment_ratio" type="range" min="0.80" max="1.00" step="0.02"
+                                                class="w-full accent-emerald-500 cursor-pointer">
+                                        </div>
+
+                                        <div class="flex flex-col gap-1">
+                                            <label class="text-slate-400">AI 开场白强调重点</label>
+                                            <input v-model="currentCityConfig.tiers.tier1_local_commute.greeting_tone" type="text"
+                                                class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-emerald-500">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Tier 2: 邻近核心地级市 -->
+                                <div class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-sky-500/30">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2">
+                                            <span class="w-3 h-3 rounded-full bg-sky-500 shadow-md shadow-sky-500/50"></span>
+                                            <h4 class="font-bold text-sm text-white">Tier 2: 邻近核心地级市 / 产业圈</h4>
+                                        </div>
+                                        <span class="text-xs text-sky-400 font-bold">+{{ currentCityConfig.tiers.tier2_adjacent_metro.priority_bonus }}分 加分</span>
+                                    </div>
+
+                                    <div class="flex flex-col gap-3 text-xs">
+                                        <div>
+                                            <label class="text-slate-300 block mb-1.5">包含的周边城市列表 (回车添加)</label>
+                                            <div class="flex items-center gap-1.5 flex-wrap bg-slate-950 border border-slate-800 rounded-lg p-2 min-h-[38px]">
+                                                <span v-for="(cityTag, tIdx) in currentCityConfig.tiers.tier2_adjacent_metro.adjacent_city_names" :key="tIdx"
+                                                    class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 flex items-center gap-1">
+                                                    {{ cityTag }}
+                                                    <i @click="removeAdjacentCity(tIdx)" data-lucide="x" class="w-3 h-3 hover:text-white cursor-pointer"></i>
+                                                </span>
+                                                <input @keydown.enter.prevent="addAdjacentCity($event)" placeholder="+输入城市名回车"
+                                                    class="bg-transparent text-slate-200 text-xs focus:outline-none w-28">
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <div class="flex justify-between text-slate-300 mb-1">
+                                                <span>及格分线</span>
+                                                <span class="font-bold text-sky-400">{{ currentCityConfig.tiers.tier2_adjacent_metro.min_score_required }} 分</span>
+                                            </div>
+                                            <input v-model.number="currentCityConfig.tiers.tier2_adjacent_metro.min_score_required" type="range" min="65" max="95"
+                                                class="w-full accent-sky-500 cursor-pointer">
+                                        </div>
+
+                                        <div class="flex flex-col gap-1">
+                                            <label class="text-slate-400">AI 沟通摸底重点</label>
+                                            <input v-model="currentCityConfig.tiers.tier2_adjacent_metro.greeting_tone" type="text"
+                                                class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Tier 3: 省内其他中心城市 -->
+                                <div class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-amber-500/30">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2">
+                                            <span class="w-3 h-3 rounded-full bg-amber-500 shadow-md shadow-amber-500/50"></span>
+                                            <h4 class="font-bold text-sm text-white">Tier 3: 省内其他中心城市</h4>
+                                        </div>
+                                        <span class="text-xs text-amber-400 font-bold">覆盖异地成本</span>
+                                    </div>
+
+                                    <div class="flex flex-col gap-3 text-xs">
+                                        <div>
+                                            <div class="flex justify-between text-slate-300 mb-1">
+                                                <span>异地租房生活溢价要求</span>
+                                                <span class="font-bold text-amber-400">{{ (currentCityConfig.tiers.tier3_province_wide.salary_adjustment_ratio * 100).toFixed(0) }}% (+{{ ((currentCityConfig.tiers.tier3_province_wide.salary_adjustment_ratio - 1) * 100).toFixed(0) }}% 溢价)</span>
+                                            </div>
+                                            <input v-model.number="currentCityConfig.tiers.tier3_province_wide.salary_adjustment_ratio" type="range" min="1.00" max="1.50" step="0.05"
+                                                class="w-full accent-amber-500 cursor-pointer">
+                                        </div>
+
+                                        <div>
+                                            <div class="flex justify-between text-slate-300 mb-1">
+                                                <span>及格分线</span>
+                                                <span class="font-bold text-amber-400">{{ currentCityConfig.tiers.tier3_province_wide.min_score_required }} 分</span>
+                                            </div>
+                                            <input v-model.number="currentCityConfig.tiers.tier3_province_wide.min_score_required" type="range" min="70" max="95"
+                                                class="w-full accent-amber-500 cursor-pointer">
+                                        </div>
+
+                                        <div class="flex flex-col gap-1">
+                                            <label class="text-slate-400">最低公司规模底线</label>
+                                            <select v-model.number="currentCityConfig.tiers.tier3_province_wide.require_company_scale_min"
+                                                class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-amber-500">
+                                                <option :value="0">不设人数限制</option>
+                                                <option :value="50">50人以上自研</option>
+                                                <option :value="100">100人以上正规自研 (推荐)</option>
+                                                <option :value="500">500人以上中大型企业</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Tier 4: 全国一线与远程办公 -->
+                                <div class="glass rounded-2xl p-5 flex flex-col gap-3.5 border-purple-500/30">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2">
+                                            <span class="w-3 h-3 rounded-full bg-purple-500 shadow-md shadow-purple-500/50"></span>
+                                            <h4 class="font-bold text-sm text-white">Tier 4: 全国优质机会 & 远程办公</h4>
+                                        </div>
+                                        <span class="text-xs text-purple-400 font-bold">远程置顶加20分</span>
+                                    </div>
+
+                                    <div class="flex flex-col gap-3 text-xs">
+                                        <div>
+                                            <div class="flex justify-between text-slate-300 mb-1">
+                                                <span>跨省搬迁薪资溢价要求</span>
+                                                <span class="font-bold text-purple-400">{{ (currentCityConfig.tiers.tier4_nationwide_or_remote.salary_adjustment_ratio * 100).toFixed(0) }}% (+{{ ((currentCityConfig.tiers.tier4_nationwide_or_remote.salary_adjustment_ratio - 1) * 100).toFixed(0) }}% 溢价)</span>
+                                            </div>
+                                            <input v-model.number="currentCityConfig.tiers.tier4_nationwide_or_remote.salary_adjustment_ratio" type="range" min="1.10" max="1.60" step="0.05"
+                                                class="w-full accent-purple-500 cursor-pointer">
+                                        </div>
+
+                                        <div>
+                                            <div class="flex justify-between text-slate-300 mb-1">
+                                                <span>及格分线</span>
+                                                <span class="font-bold text-purple-400">{{ currentCityConfig.tiers.tier4_nationwide_or_remote.min_score_required }} 分</span>
+                                            </div>
+                                            <input v-model.number="currentCityConfig.tiers.tier4_nationwide_or_remote.min_score_required" type="range" min="75" max="95"
+                                                class="w-full accent-purple-500 cursor-pointer">
+                                        </div>
+
+                                        <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-950 border border-slate-800 mt-1">
+                                            <div>
+                                                <div class="font-bold text-slate-200">远程办公 (Remote) 置顶通道</div>
+                                                <div class="text-[11px] text-slate-400">命中远程关键字直接奖励 +{{ currentCityConfig.tiers.tier4_nationwide_or_remote.remote_job_bonus }} 分</div>
+                                            </div>
+                                            <span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold">已启用</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. 通用 YAML 源码编辑器 (用于其他配置或高级模式) -->
+                    <div v-else class="flex-1 glass rounded-2xl p-4 flex flex-col">
                         <textarea v-model="configYamlContent"
                             class="flex-1 w-full bg-slate-950/80 border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-200 focus:outline-none focus:border-indigo-500 selection:bg-indigo-500 leading-relaxed resize-none">
                         </textarea>
@@ -267,7 +524,7 @@
     </div>
 
     <script>
-        const { createApp, ref, onMounted, nextTick } = Vue;
+        const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
         createApp({
             setup() {
@@ -287,16 +544,84 @@
                 ];
 
                 const configTypes = [
-                    { key: 'profile', name: '👤 个人简历画像 (profile)' },
                     { key: 'cities', name: '📍 多城市空间辐射 (cities)' },
+                    { key: 'profile', name: '👤 个人简历画像 (profile)' },
                     { key: 'inquiries', name: '❓ 追问与摸底引擎 (inquiries)' },
                     { key: 'blacklist', name: '🚫 避坑黑名单库 (blacklist)' }
                 ];
 
-                const selectedConfig = ref('profile');
+                const selectedConfig = ref('cities');
+                const configViewMode = ref('visual'); // 'visual' | 'yaml'
                 const configYamlContent = ref('');
                 const jobsList = ref([]);
                 const logs = ref([]);
+
+                // 空间辐射可视化交互数据
+                const citiesData = ref({
+                    active_cities: ['hangzhou', 'shanghai', 'shenzhen'],
+                    cities: {}
+                });
+                const currentCityKey = ref('hangzhou');
+
+                const currentCityConfig = computed(() => {
+                    return citiesData.value.cities?.[currentCityKey.value] || null;
+                });
+
+                const toggleCityActive = (cityKey) => {
+                    if (!citiesData.value.active_cities) citiesData.value.active_cities = [];
+                    const idx = citiesData.value.active_cities.indexOf(cityKey);
+                    if (idx >= 0) {
+                        if (citiesData.value.active_cities.length > 1) {
+                            citiesData.value.active_cities.splice(idx, 1);
+                        } else {
+                            alert('至少需要保留一个激活的检索城市！');
+                        }
+                    } else {
+                        citiesData.value.active_cities.push(cityKey);
+                    }
+                };
+
+                const fillPresetAnchor = (preset) => {
+                    if (!currentCityConfig.value) return;
+                    if (preset === 'hangzhou') {
+                        currentCityConfig.value.anchor.name = "杭州未来科技城/阿里西溪园区";
+                        currentCityConfig.value.anchor.district = "余杭区";
+                        currentCityConfig.value.anchor.latitude = 30.2796;
+                        currentCityConfig.value.anchor.longitude = 120.0253;
+                    } else if (preset === 'shanghai') {
+                        currentCityConfig.value.anchor.name = "上海张江高科/浦东软件园";
+                        currentCityConfig.value.anchor.district = "浦东新区";
+                        currentCityConfig.value.anchor.latitude = 31.2008;
+                        currentCityConfig.value.anchor.longitude = 121.5977;
+                    } else if (preset === 'shenzhen') {
+                        currentCityConfig.value.anchor.name = "深圳南山科技园/粤海街道";
+                        currentCityConfig.value.anchor.district = "南山区";
+                        currentCityConfig.value.anchor.latitude = 22.5401;
+                        currentCityConfig.value.anchor.longitude = 113.9534;
+                    }
+                };
+
+                const addAdjacentCity = (e) => {
+                    const val = e.target.value.trim();
+                    if (!val) return;
+                    const t2 = currentCityConfig.value?.tiers?.tier2_adjacent_metro;
+                    if (t2) {
+                        if (!t2.adjacent_city_names) t2.adjacent_city_names = [];
+                        if (!t2.adjacent_city_names.includes(val)) {
+                            t2.adjacent_city_names.push(val);
+                        }
+                    }
+                    e.target.value = '';
+                    nextTick(() => lucide.createIcons());
+                };
+
+                const removeAdjacentCity = (idx) => {
+                    const t2 = currentCityConfig.value?.tiers?.tier2_adjacent_metro;
+                    if (t2?.adjacent_city_names) {
+                        t2.adjacent_city_names.splice(idx, 1);
+                        nextTick(() => lucide.createIcons());
+                    }
+                };
 
                 const fetchStatus = async () => {
                     try {
@@ -321,9 +646,18 @@
                 const loadConfig = async (name) => {
                     selectedConfig.value = name;
                     try {
+                        if (name === 'cities') {
+                            const dataRes = await fetch(`/api/config/cities/data`);
+                            const json = await dataRes.json();
+                            citiesData.value = json.data || { active_cities: [], cities: {} };
+                            if (citiesData.value.active_cities?.length > 0 && !citiesData.value.cities[currentCityKey.value]) {
+                                currentCityKey.value = citiesData.value.active_cities[0];
+                            }
+                        }
                         const res = await fetch(`/api/config/${name}`);
                         const data = await res.json();
                         configYamlContent.value = data.yaml_content;
+                        nextTick(() => lucide.createIcons());
                     } catch (e) {
                         console.error(e);
                     }
@@ -331,16 +665,32 @@
 
                 const saveCurrentConfig = async () => {
                     try {
-                        const res = await fetch(`/api/config/${selectedConfig.value}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ yaml_content: configYamlContent.value })
-                        });
-                        const data = await res.json();
-                        if (res.ok) {
-                            alert(data.message || '配置已保存成功！');
+                        if (selectedConfig.value === 'cities' && configViewMode.value === 'visual') {
+                            const res = await fetch(`/api/config/cities/data`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ data: citiesData.value })
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                                alert(data.message || '多城市空间辐射策略已成功保存生效！');
+                                loadConfig('cities');
+                            } else {
+                                alert(data.detail || '保存失败');
+                            }
                         } else {
-                            alert(data.detail || '保存失败');
+                            const res = await fetch(`/api/config/${selectedConfig.value}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ yaml_content: configYamlContent.value })
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                                alert(data.message || '配置已保存成功！');
+                                loadConfig(selectedConfig.value);
+                            } else {
+                                alert(data.detail || '保存失败');
+                            }
                         }
                     } catch (e) {
                         alert('网络请求失败');
@@ -392,7 +742,6 @@
                     ws.onmessage = (event) => {
                         const data = JSON.parse(event.data);
                         logs.value.push(data);
-                        // 自动刷新状态与岗位
                         if (data.message && data.message.includes('命中优质岗位')) {
                             fetchJobs();
                             fetchStatus();
@@ -407,7 +756,7 @@
                     lucide.createIcons();
                     fetchStatus();
                     fetchJobs();
-                    loadConfig('profile');
+                    loadConfig('cities');
                     connectWebSocket();
                     setInterval(fetchStatus, 3000);
                 });
@@ -418,7 +767,15 @@
                     tabs,
                     configTypes,
                     selectedConfig,
+                    configViewMode,
                     configYamlContent,
+                    citiesData,
+                    currentCityKey,
+                    currentCityConfig,
+                    toggleCityActive,
+                    fillPresetAnchor,
+                    addAdjacentCity,
+                    removeAdjacentCity,
                     jobsList,
                     logs,
                     fetchJobs,

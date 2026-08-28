@@ -157,6 +157,18 @@ async def get_config(config_name: str):
     return {"name": config_name, "yaml_content": content}
 
 
+@app.get("/api/config/{config_name}/data")
+async def get_config_data(config_name: str):
+    """以结构化 JSON 返回配置数据，便于 GUI 可视化表单双向绑定"""
+    if config_name not in CONFIG_FILES:
+        raise HTTPException(status_code=404, detail="Config not found")
+    
+    cfg_path = Path(__file__).resolve().parent.parent.parent / "config" / CONFIG_FILES[config_name]
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    return {"name": config_name, "data": data}
+
+
 class ConfigUpdateRequest(BaseModel):
     yaml_content: str
 
@@ -175,6 +187,22 @@ async def save_config(config_name: str, req: ConfigUpdateRequest):
         f.write(req.yaml_content)
         
     return {"status": "success", "message": f"{config_name} 配置已保存成功！"}
+
+
+class ConfigDataUpdateRequest(BaseModel):
+    data: Dict[str, Any]
+
+@app.post("/api/config/{config_name}/data")
+async def save_config_data(config_name: str, req: ConfigDataUpdateRequest):
+    """保存来自 GUI 交互表单的结构化配置数据并序列化为 YAML"""
+    if config_name not in CONFIG_FILES:
+        raise HTTPException(status_code=404, detail="Config not found")
+    
+    cfg_path = Path(__file__).resolve().parent.parent.parent / "config" / CONFIG_FILES[config_name]
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        yaml.dump(req.data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        
+    return {"status": "success", "message": f"{config_name} 可视化空间辐射策略已成功保存生效！"}
 
 
 # ==========================================
