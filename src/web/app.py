@@ -24,13 +24,14 @@ from src.scoring_engine import ScoringEngine
 from src.notifier import NotificationManager
 from src.cdp_controller import CDPBrowserController
 
+from datetime import datetime
+import subprocess
+
 app = FastAPI(title="AI Job Hunter Pro Dashboard")
 
 # 全局状态管理
 class AppState:
-    agent_thread: Optional[threading.Thread] = None
-    current_controller: Optional[CDPBrowserController] = None
-    stop_event = threading.Event()
+    agent_process: Optional[subprocess.Popen] = None
     is_running = False
     current_mode = "IDLE"  # IDLE, SCAN_ONLY, LIVE_APPLY
     active_websockets: List[WebSocket] = []
@@ -44,9 +45,8 @@ class WebSocketLogHandler(logging.Handler):
         msg_payload = {
             "level": record.levelname,
             "message": log_entry,
-            "time": getattr(record, "asctime", "")
+            "time": datetime.now().strftime("%H:%M:%S")
         }
-        # 向所有连接的客户端推送
         for ws in list(state.active_websockets):
             try:
                 asyncio.run_coroutine_threadsafe(
@@ -86,7 +86,6 @@ async def serve_dashboard():
 # ==========================================
 @app.get("/api/status")
 async def get_system_status():
-    # 检查 Chrome 9222 端口状态
     chrome_online = False
     try:
         async with httpx.AsyncClient(timeout=1.0) as client:
@@ -98,6 +97,11 @@ async def get_system_status():
 
     db = DatabaseManager()
     today_applied = db.get_today_apply_count()
+
+    is_proc_running = bool(state.agent_process and state.agent_process.poll() is None)
+    if not is_proc_running:
+        state.is_running = False
+        state.current_mode = "IDLE"
 
     return {
         "chrome_online": chrome_online,
@@ -150,7 +154,6 @@ async def save_config(config_name: str, req: ConfigUpdateRequest):
     if config_name not in CONFIG_FILES:
         raise HTTPException(status_code=404, detail="Config not found")
     
-    # 语法校验
     try:
         yaml.safe_load(req.yaml_content)
     except yaml.YAMLError as e:
@@ -164,11 +167,10 @@ async def save_config(config_name: str, req: ConfigUpdateRequest):
 
 
 # ==========================================
-# 4. Chrome 与 Agent 控制接口
+# 4. Chrome 与 Agent 控制接口 (子进程隔离驱动)
 # ==========================================
 @app.post("/api/chrome/start")
 async def launch_chrome_debugger():
-    import subprocess
     chrome_candidates = [
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
@@ -193,79 +195,35 @@ async def launch_chrome_debugger():
     return {"status": "launched", "message": "Chrome 调试窗口正在启动中..."}
 
 
-def _run_agent_worker(dry_run: bool, max_apply: int):
-    """后台运行求职任务工作线程"""
-    logger = logging.getLogger("JobAgent")
-    cfg = ConfigManager()
-    db = DatabaseManager()
-    notifier = NotificationManager()
-    engine = ScoringEngine(cfg)
-    controller = CDPBrowserController(notifier=notifier, stop_event=state.stop_event)
-    state.current_controller = controller
-
-    state.is_running = True
-    state.current_mode = "SCAN_ONLY" if dry_run else "LIVE_APPLY"
-    state.stop_event.clear()
-
+def _stream_agent_output(proc: subprocess.Popen, loop: asyncio.AbstractEventLoop):
+    """实时读取 Agent 子进程输出并广播至 WebSocket"""
     try:
-        logger.info(f"🚀 启动 Agent 任务 (模式: {state.current_mode})...")
-        controller.connect()
-
-        roles = cfg.profile_config.get("basics", {}).get("target_roles", ["AI Agent工程师"])
-        scanned_count = 0
-        high_match = []
-
-        for role in roles:
-            if state.stop_event.is_set():
+        for line in iter(proc.stdout.readline, ''):
+            if not line:
                 break
-
-            logger.info(f"🔍 正在检索关键词: 【{role}】...")
-            for job in controller.scan_jobs_page(query=role):
-                if state.stop_event.is_set():
-                    logger.info("⏹ 收到停止指令，正在退出工作流...")
-                    break
-
-                scanned_count += 1
-                if db.is_job_applied_recently(job.job_id):
-                    logger.info(f"⏭ 岗位 [{job.company_name} - {job.job_title}] 处于冷却期内，跳过。")
-                    continue
-
-                result = engine.evaluate_job_with_llm(job)
-                if result.passed:
-                    logger.info(f"✅ 命中优质岗位: 【{job.company_name}】{job.job_title} ({job.salary_raw}) | 得分: {result.score}")
-                    if not dry_run:
-                        success = controller.send_initial_greeting(result.custom_greeting or "")
-                        if success:
-                            db.record_job_result(job.dict(), "APPLIED", result.score, "LLM匹配通过", result.custom_greeting)
-                            db.increment_today_apply_count()
-                            high_match.append({"company": job.company_name, "title": job.job_title, "salary": job.salary_raw, "score": result.score})
-                            if db.get_today_apply_count() >= max_apply:
-                                logger.warning("🛑 今日投递已达配额上限，停止投递！")
-                                break
-                    else:
-                        db.record_job_result(job.dict(), "CONSIDER", result.score, "演练通过", result.custom_greeting)
-                else:
-                    logger.info(f"❌ 淘汰: 【{job.company_name}】{job.job_title} | 原因: {result.rejection_reason}")
-                    db.record_job_result(job.dict(), "REJECTED", result.score, result.rejection_reason or "")
-
-                controller.human_delay(3.0, 5.0)
-
-        if not state.stop_event.is_set():
-            notifier.send_daily_summary(scanned_count, len(high_match), high_match)
-            logger.info(f"✨ 任务已完成！总扫描: {scanned_count} 个，投递: {len(high_match)} 个。")
-        else:
-            logger.info(f"⏹ 工作流已完全停止 (已扫描 {scanned_count} 个岗位)。")
-
-    except Exception as e:
-        if state.stop_event.is_set():
-            logger.info("⏹ 工作流已按用户指令安全中断。")
-        else:
-            logger.error(f"Agent 运行异常: {e}")
+            line_str = line.strip()
+            if line_str:
+                msg_payload = {
+                    "level": "INFO",
+                    "message": line_str,
+                    "time": datetime.now().strftime("%H:%M:%S")
+                }
+                for ws in list(state.active_websockets):
+                    try:
+                        asyncio.run_coroutine_threadsafe(
+                            ws.send_text(json.dumps(msg_payload, ensure_ascii=False)),
+                            loop
+                        )
+                    except Exception:
+                        pass
     finally:
-        controller.close()
-        state.current_controller = None
+        try:
+            proc.stdout.close()
+        except Exception:
+            pass
         state.is_running = False
         state.current_mode = "IDLE"
+        state.agent_process = None
 
 
 class AgentStartRequest(BaseModel):
@@ -274,12 +232,34 @@ class AgentStartRequest(BaseModel):
 
 @app.post("/api/agent/start")
 async def start_agent_task(req: AgentStartRequest):
-    if state.is_running:
+    if state.agent_process and state.agent_process.poll() is None:
         raise HTTPException(status_code=400, detail="Agent 已经在运行中！")
 
-    dry_run = (req.mode == "scan-only")
-    state.agent_thread = threading.Thread(target=_run_agent_worker, args=(dry_run, req.max_apply), daemon=True)
-    state.agent_thread.start()
+    main_py_path = str(Path(__file__).resolve().parent.parent.parent / "main.py")
+    cmd = [
+        sys.executable,
+        "-u",  # 禁用标准输出缓冲，确保实时输出
+        main_py_path,
+        req.mode,
+        "--max-apply", str(req.max_apply)
+    ]
+
+    state.is_running = True
+    state.current_mode = "SCAN_ONLY" if req.mode == "scan-only" else "LIVE_APPLY"
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1
+    )
+    state.agent_process = proc
+
+    # 启动后台线程监听流式输出
+    threading.Thread(target=_stream_agent_output, args=(proc, async_loop), daemon=True).start()
 
     return {"status": "started", "mode": req.mode}
 
@@ -287,16 +267,33 @@ async def start_agent_task(req: AgentStartRequest):
 @app.post("/api/agent/stop")
 async def stop_agent_task():
     logger = logging.getLogger("JobAgent")
-    logger.info("🛑 收到用户强制停止指令，正在立即切断浏览器操作...")
-    state.stop_event.set()
-    if state.current_controller:
+    logger.info("🛑 收到用户强制停止指令，正在立即强制终止子进程...")
+
+    if state.agent_process and state.agent_process.poll() is None:
         try:
-            state.current_controller.abort()
-        except Exception:
-            pass
+            # 强制终结进程树
+            state.agent_process.kill()
+            state.agent_process.wait(timeout=1.0)
+        except Exception as e:
+            logger.error(f"Kill process exception: {e}")
+        state.agent_process = None
+
     state.is_running = False
     state.current_mode = "IDLE"
-    return {"status": "stopped", "message": "已成功向 Agent 发送停止指令并强制切断操作！"}
+
+    # 向前端广播停止通知
+    stop_msg = {
+        "level": "WARNING",
+        "message": "⏹ Agent 工作流已被用户强制立即终止！",
+        "time": datetime.now().strftime("%H:%M:%S")
+    }
+    for ws in list(state.active_websockets):
+        try:
+            await ws.send_text(json.dumps(stop_msg, ensure_ascii=False))
+        except Exception:
+            pass
+
+    return {"status": "stopped", "message": "已成功强制终止 Agent 工作流！"}
 
 
 # ==========================================
@@ -307,17 +304,16 @@ async def websocket_logs_endpoint(websocket: WebSocket):
     await websocket.accept()
     state.active_websockets.append(websocket)
     try:
-        # 发送一条就绪欢迎日志
         await websocket.send_text(json.dumps({
             "level": "INFO",
             "message": "🔌 控制台 WebSocket 实时日志通道已就绪",
-            "time": ""
+            "time": datetime.now().strftime("%H:%M:%S")
         }, ensure_ascii=False))
         while True:
-            # 保持心跳
             await websocket.receive_text()
     except WebSocketDisconnect:
-        state.active_websockets.remove(websocket)
+        if websocket in state.active_websockets:
+            state.active_websockets.remove(websocket)
     except Exception:
         if websocket in state.active_websockets:
             state.active_websockets.remove(websocket)
