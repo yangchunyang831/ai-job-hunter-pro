@@ -1,12 +1,11 @@
 """
-Resilient Single Live Battle Verification Runner with Login-Expiry Auto-Recovery for BOSS 直聘.
+Crash-Proof Single Live Battle Verification Runner for BOSS 直聘.
 Features:
-1. Pure ASCII Bat launcher compatible.
-2. Auto-detects login expiration / login modal and waits politely for user scan/SMS login.
-3. Automatically resumes and navigates to the target non-Hunan job page.
-4. Auto-detects Geetest/Verify captcha.
-5. Scrapes non-Hunan jobs, clicks target card, clicks '立即沟通', and confirms modal!
-6. Permanently keeps the window open on desktop.
+1. Dynamic active page recovery (immune to TargetClosedError during page reloads/WeChat scan).
+2. Polite login-expired waiting loop with automatic continuation upon login.
+3. Automatically retrieves non-Hunan job cards, skips skeleton loaders.
+4. Clicks target card on screen, clicks '立即沟通', confirms modal, and sends real message!
+5. Permanently keeps the Chrome window open on desktop.
 """
 import sys
 import os
@@ -25,12 +24,37 @@ from src.schemas import RawJobCard
 from src.battle_logger import log_event
 
 
-async def check_login_and_security(page, target_url):
-    """检测登录过期、二维码登录与安全验证码"""
+def get_live_page(context):
+    """获取当前可用的非关闭页面"""
+    for p in reversed(context.pages):
+        try:
+            if not p.is_closed():
+                return p
+        except Exception:
+            pass
+    return None
+
+
+async def check_login_and_security(context, target_url):
+    """检测登录过期、二维码登录与安全验证码（防页面刷新崩溃）"""
     while True:
+        page = get_live_page(context)
+        if not page:
+            page = await context.new_page()
+            
+        try:
+            cur_url = page.url
+        except Exception:
+            await asyncio.sleep(1.0)
+            continue
+
         # 1. 检测是否处于登录失效或需要登录状态
-        is_login = "login" in page.url or "user" in page.url
-        login_box = await page.query_selector(".login-dialog, .login-wrap, .dialog-login, .login-box-warp, [class*='login-dialog']")
+        is_login = "login" in cur_url or "user" in cur_url
+        login_box = None
+        try:
+            login_box = await page.query_selector(".login-dialog, .login-wrap, .dialog-login, .login-box-warp, [class*='login-dialog']")
+        except Exception:
+            pass
         
         if is_login or login_box:
             print("\n" + "╔" + "═"*62 + "╗")
@@ -39,40 +63,60 @@ async def check_login_and_security(page, target_url):
             print("║  ⏳ 系统正在全自动监听，您登录成功后将立即自动接管并沟通！  ║")
             print("╚" + "═"*62 + "╝\n")
             
-            while "login" in page.url or "user" in page.url or await page.query_selector(".login-dialog, .login-wrap, .dialog-login"):
+            while True:
                 await asyncio.sleep(2.0)
+                page = get_live_page(context)
+                if not page:
+                    continue
+                try:
+                    still_login = "login" in page.url or "user" in page.url
+                    still_box = await page.query_selector(".login-dialog, .login-wrap, .dialog-login")
+                    if not (still_login or still_box):
+                        break
+                except Exception:
+                    pass
                 
             print("🎉 ✅ 登录成功！系统立即重新连接目标岗位靶场...\n")
             await asyncio.sleep(2.0)
-            try:
-                await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
-            except Exception:
-                pass
+            page = get_live_page(context)
+            if page:
+                try:
+                    await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+                except Exception:
+                    pass
             continue
 
         # 2. 检测验证码
-        if "verify.html" in page.url or "security.html" in page.url:
+        if "verify.html" in cur_url or "security.html" in cur_url:
             print("\n" + "╔" + "═"*62 + "╗")
             print("║  🚨 【检测到 BOSS 直聘安全验证码】                           ║")
             print("║  👉 请在您屏幕上的 Chrome 窗口中点击/滑动完成验证            ║")
             print("║  ⏳ 系统正在全自动监听，您点过验证码后将立即自动继续！      ║")
             print("╚" + "═"*62 + "╝\n")
             
-            while "verify.html" in page.url or "security.html" in page.url:
+            while True:
                 await asyncio.sleep(1.5)
+                page = get_live_page(context)
+                if not page:
+                    continue
+                try:
+                    if "verify.html" not in page.url and "security.html" not in page.url:
+                        break
+                except Exception:
+                    pass
                 
             print("🎉 ✅ 检测到验证码已成功解除！系统立即无缝接管，开始检索高危靶场岗位...\n")
             await asyncio.sleep(2.0)
             continue
             
-        # 正常状态
+        # 正常状态退出检测循环
         break
-    return True
+    return page
 
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘高危实战靶场【登录自愈·真机有头实战沟通】启动")
+    print("🎯 BOSS 直聘高危实战靶场【防崩自愈·真机有头实战沟通】启动")
     print("="*70 + "\n")
     
     config_mgr = ConfigManager()
@@ -126,18 +170,18 @@ async def main():
         except Exception as e:
             print(f"   页面加载通知: {e}")
             
+        # 检查登录与验证码（防刷新崩溃）
+        page = await check_login_and_security(context, target_url)
         await page.bring_to_front()
-        
-        # 检查登录与验证码
-        await check_login_and_security(page, target_url)
         
         print("\n3. 正在等待岗位数据流渲染并注水文字...")
         cards = []
         for sec in range(25):
             await asyncio.sleep(1.0)
             
-            # 再次检查登录与验证码
-            await check_login_and_security(page, target_url)
+            page = get_live_page(context)
+            if not page:
+                continue
                 
             # 滚轮激活
             if sec % 2 == 0:
@@ -163,8 +207,10 @@ async def main():
                 break
                 
         if not cards:
-            print("   ⚠️ 正在从页面全局节点抓取卡片...")
-            cards = await page.query_selector_all("ul > li, div.card, a[href*='job_detail']")
+            page = get_live_page(context)
+            if page:
+                print("   ⚠️ 正在从页面全局节点抓取卡片...")
+                cards = await page.query_selector_all("ul > li, div.card, a[href*='job_detail']")
 
         print(f"\n📊 开始筛选非湖南真实岗位（共 {len(cards)} 个候选）：")
         
@@ -231,45 +277,50 @@ async def main():
         # 4. 点击卡片展开详情并点击【立即沟通】
         if chosen_target:
             print(f"\n4. 🚀 正在向选定目标【{chosen_target['company']}】执行真机点击与沟通！")
-            try:
-                await chosen_target["card"].scroll_into_view_if_needed()
-                await chosen_target["card"].click()
-                await asyncio.sleep(2.5)
-            except Exception:
-                pass
-                
-            # 定位立即沟通按钮
-            chat_btn = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat, [class*='btn-startchat']").first
-            try:
-                if await chat_btn.is_visible():
-                    btn_text = (await chat_btn.inner_text()).strip()
-                    print(f"   👉 成功在屏幕上定位到【立即沟通】按钮 (文字: {btn_text})，正在点击！")
-                    await chat_btn.click()
+            page = get_live_page(context)
+            if page:
+                try:
+                    await chosen_target["card"].scroll_into_view_if_needed()
+                    await chosen_target["card"].click()
                     await asyncio.sleep(2.5)
+                except Exception:
+                    pass
                     
-                    # 确认弹窗
-                    confirm_btn = page.locator(".dialog-startchat .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('确认沟通'), button:has-text('继续沟通')").first
-                    try:
-                        if await confirm_btn.is_visible():
-                            print("   👉 自动确认打招呼弹窗并发送...")
-                            await confirm_btn.click()
-                            await asyncio.sleep(2)
-                    except Exception:
-                        pass
+                # 定位立即沟通按钮
+                chat_btn = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat, [class*='btn-startchat']").first
+                try:
+                    if await chat_btn.is_visible():
+                        btn_text = (await chat_btn.inner_text()).strip()
+                        print(f"   👉 成功在屏幕上定位到【立即沟通】按钮 (文字: {btn_text})，正在点击！")
+                        await chat_btn.click()
+                        await asyncio.sleep(2.5)
                         
-                    print("\n" + "╔" + "═"*62 + "╗")
-                    print(f"║  🎉 【真实实战打招呼已成功发送！】                           ║")
-                    print(f"║  🏢 目标企业: {chosen_target['company']:<35} ║")
-                    print(f"║  💼 岗位名称: {chosen_target['title']:<35} ║")
-                    print(f"║  💬 打招呼语: {chosen_target['greeting']:<35} ║")
-                    print("╚" + "═"*62 + "╝\n")
-                    log_event("CHAT_SUCCESS", f"✅ 成功向【{chosen_target['company']}】HR 发起真实沟通！")
-            except Exception as e:
-                print("   ⚠️ 沟通点击异常:", e)
-                
-            screenshot_path = screenshots_dir / "live_chat_verified.png"
-            await page.screenshot(path=str(screenshot_path))
-            print(f"   📸 实况页面已截屏留证: {screenshot_path.name}")
+                        # 确认弹窗
+                        confirm_btn = page.locator(".dialog-startchat .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('确认沟通'), button:has-text('继续沟通')").first
+                        try:
+                            if await confirm_btn.is_visible():
+                                print("   👉 自动确认打招呼弹窗并发送...")
+                                await confirm_btn.click()
+                                await asyncio.sleep(2)
+                        except Exception:
+                            pass
+                            
+                        print("\n" + "╔" + "═"*62 + "╗")
+                        print(f"║  🎉 【真实实战打招呼已成功发送！】                           ║")
+                        print(f"║  🏢 目标企业: {chosen_target['company']:<35} ║")
+                        print(f"║  💼 岗位名称: {chosen_target['title']:<35} ║")
+                        print(f"║  💬 打招呼语: {chosen_target['greeting']:<35} ║")
+                        print("╚" + "═"*62 + "╝\n")
+                        log_event("CHAT_SUCCESS", f"✅ 成功向【{chosen_target['company']}】HR 发起真实沟通！")
+                except Exception as e:
+                    print("   ⚠️ 沟通点击异常:", e)
+                    
+                screenshot_path = screenshots_dir / "live_chat_verified.png"
+                try:
+                    await page.screenshot(path=str(screenshot_path))
+                    print(f"   📸 实况页面已截屏留证: {screenshot_path.name}")
+                except Exception:
+                    pass
             
         print("\n" + "="*70)
         print("🎉 【实战全流程 100% 执行完毕！】Chrome 窗口常驻桌面供您直接核验！")
