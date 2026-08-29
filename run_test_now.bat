@@ -1,13 +1,12 @@
 @echo off
-title AI Job Hunter Pro
+title AI Job Hunter Pro - Live HR Communication
 cd /d "%~dp0"
 
 echo ==========================================================
 echo [AI Job Hunter Pro] Live Real-World HR Communication
 echo ==========================================================
 echo.
-echo Starting Chrome browser...
-taskkill /f /im chrome.exe >nul 2>&1
+echo Connecting to live Chrome window and initiating communication...
 echo.
 
 if exist ".\.venv\Scripts\python.exe" (
