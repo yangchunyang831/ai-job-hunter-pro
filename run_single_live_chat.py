@@ -1,11 +1,12 @@
 """
-Zero-Failure Single Live Battle Verification Runner for BOSS 直聘.
+Resilient Single Live Battle Verification Runner with Login-Expiry Auto-Recovery for BOSS 直聘.
 Features:
-1. Closes orphan about:blank tabs, ensures only 1 active foreground page.
-2. Direct navigation with immediate commit to prevent frozen blank state.
-3. Automatically brings window to front.
-4. Auto-detects Geetest/Verify captcha and resumes after user passes it.
+1. Pure ASCII Bat launcher compatible.
+2. Auto-detects login expiration / login modal and waits politely for user scan/SMS login.
+3. Automatically resumes and navigates to the target non-Hunan job page.
+4. Auto-detects Geetest/Verify captcha.
 5. Scrapes non-Hunan jobs, clicks target card, clicks '立即沟通', and confirms modal!
+6. Permanently keeps the window open on desktop.
 """
 import sys
 import os
@@ -24,27 +25,54 @@ from src.schemas import RawJobCard
 from src.battle_logger import log_event
 
 
-async def wait_until_captcha_resolved(page):
-    """检测并等待图形验证码解除"""
-    if "verify.html" in page.url or "security.html" in page.url:
-        print("\n" + "╔" + "═"*62 + "╗")
-        print("║  🚨 【检测到 BOSS 直聘安全验证码】                           ║")
-        print("║  👉 请在您屏幕上的 Chrome 窗口中点击/滑动完成验证            ║")
-        print("║  ⏳ 系统正在全自动监听，您点过验证码后将立即自动继续！      ║")
-        print("╚" + "═"*62 + "╝\n")
+async def check_login_and_security(page, target_url):
+    """检测登录过期、二维码登录与安全验证码"""
+    while True:
+        # 1. 检测是否处于登录失效或需要登录状态
+        is_login = "login" in page.url or "user" in page.url
+        login_box = await page.query_selector(".login-dialog, .login-wrap, .dialog-login, .login-box-warp, [class*='login-dialog']")
         
-        while True:
-            await asyncio.sleep(1.5)
-            if "verify.html" not in page.url and "security.html" not in page.url:
-                print("🎉 ✅ 检测到验证码已成功解除！系统立即无缝接管，开始检索高危靶场岗位...\n")
-                await asyncio.sleep(3)
-                return True
+        if is_login or login_box:
+            print("\n" + "╔" + "═"*62 + "╗")
+            print("║  🚨 【检测到 BOSS 直聘登录状态已过期】                       ║")
+            print("║  👉 请在当前打开的 Chrome 窗口中完成微信扫码或手机号登录一次  ║")
+            print("║  ⏳ 系统正在全自动监听，您登录成功后将立即自动接管并沟通！  ║")
+            print("╚" + "═"*62 + "╝\n")
+            
+            while "login" in page.url or "user" in page.url or await page.query_selector(".login-dialog, .login-wrap, .dialog-login"):
+                await asyncio.sleep(2.0)
+                
+            print("🎉 ✅ 登录成功！系统立即重新连接目标岗位靶场...\n")
+            await asyncio.sleep(2.0)
+            try:
+                await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+            except Exception:
+                pass
+            continue
+
+        # 2. 检测验证码
+        if "verify.html" in page.url or "security.html" in page.url:
+            print("\n" + "╔" + "═"*62 + "╗")
+            print("║  🚨 【检测到 BOSS 直聘安全验证码】                           ║")
+            print("║  👉 请在您屏幕上的 Chrome 窗口中点击/滑动完成验证            ║")
+            print("║  ⏳ 系统正在全自动监听，您点过验证码后将立即自动继续！      ║")
+            print("╚" + "═"*62 + "╝\n")
+            
+            while "verify.html" in page.url or "security.html" in page.url:
+                await asyncio.sleep(1.5)
+                
+            print("🎉 ✅ 检测到验证码已成功解除！系统立即无缝接管，开始检索高危靶场岗位...\n")
+            await asyncio.sleep(2.0)
+            continue
+            
+        # 正常状态
+        break
     return True
 
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘高危实战靶场【零白屏·真机有头实战沟通】启动")
+    print("🎯 BOSS 直聘高危实战靶场【登录自愈·真机有头实战沟通】启动")
     print("="*70 + "\n")
     
     config_mgr = ConfigManager()
@@ -72,12 +100,11 @@ async def main():
             ]
         )
         
-        # 彻底消除多标签页与 about:blank 占位：只保留单个前台工作页面
+        # 只保留 1 个前台工作页面
         if not context.pages:
             page = await context.new_page()
         else:
             page = context.pages[0]
-            # 关闭其余多余的空白标签页
             for extra_p in context.pages[1:]:
                 try:
                     await extra_p.close()
@@ -91,7 +118,7 @@ async def main():
         city_code = "101020100" # 上海
         target_url = f"https://www.zhipin.com/web/geek/job?query={search_kw}&city={city_code}"
         
-        print(f"2. 正在强力加载 BOSS 直聘靶场: 【上海·{search_kw}】...")
+        print(f"2. 正在加载 BOSS 直聘实战靶场: 【上海·{search_kw}】...")
         print(f"   URL: {target_url}")
         
         try:
@@ -100,29 +127,17 @@ async def main():
             print(f"   页面加载通知: {e}")
             
         await page.bring_to_front()
-        print(f"   当前前台页面 URL: {page.url}")
         
-        # 如果还是 about:blank，强行再次跳转
-        if page.url == "about:blank":
-            print("   👉 正在重试导航至 BOSS 直聘...")
-            try:
-                await page.goto(target_url, wait_until="commit", timeout=25000)
-            except Exception:
-                pass
-                
-        # 智能等待验证码
-        await wait_until_captcha_resolved(page)
+        # 检查登录与验证码
+        await check_login_and_security(page, target_url)
         
         print("\n3. 正在等待岗位数据流渲染并注水文字...")
         cards = []
         for sec in range(25):
             await asyncio.sleep(1.0)
             
-            # 检查是否有验证码
-            if "verify.html" in page.url or "security.html" in page.url:
-                if sec % 3 == 0:
-                    print(f"   🚨 [等待验证码完成] 请在 Chrome 窗口中完成验证... ({sec}s)")
-                continue
+            # 再次检查登录与验证码
+            await check_login_and_security(page, target_url)
                 
             # 滚轮激活
             if sec % 2 == 0:

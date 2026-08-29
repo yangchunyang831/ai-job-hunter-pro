@@ -1,12 +1,12 @@
 @echo off
-title AI Job Hunter Pro - Live Battle Runner
+title AI Job Hunter Pro
 cd /d "%~dp0"
 
 echo ==========================================================
-echo [AI Job Hunter Pro] BOSS 直聘实战高危目标自动筛选与沟通
+echo [AI Job Hunter Pro] Live Real-World HR Communication
 echo ==========================================================
 echo.
-echo 正在清理残留进程并启动可视化 Chrome...
+echo Starting Chrome browser...
 taskkill /f /im chrome.exe >nul 2>&1
 echo.
 
