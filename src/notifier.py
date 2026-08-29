@@ -28,6 +28,23 @@ class NotificationManager:
         )
         self._dispatch(res["title"], f"**公司**: {company}\n**岗位**: {job_title}\n**HR**: {hr_name}\n**最新消息**: {message}\n\n📋 **微信好友申请打招呼词**:\n> {res['wechat_greeting']}\n\n⚠️ **AI 已自动暂停该会话回复，请立即打开浏览器手动接管！**", alert_type="INTERVIEW")
 
+    def send_safety_alert(self, company: str, job_title: str, hr_name: str, message: str, reason: str):
+        """高危风险/涉诈诱导拦截警报 (严禁生成打招呼词，红牌警告)"""
+        title = f"🚨 【高危涉诈/人身安全风险拦截】[{company}]"
+        content = (
+            f"**涉事企业**: {company}\n"
+            f"**涉及岗位**: {job_title}\n"
+            f"**HR/发布人**: {hr_name}\n"
+            f"**拦截原因**: ❌ {reason}\n"
+            f"**HR 原消息**: \"{message}\"\n\n"
+            f"🛡️ **安全操作提示**:\n"
+            f"1. 系统已**紧急就地熔断并阻断 AI 回复**，防止掉入套路陷阱！\n"
+            f"2. **严禁**添加对方提供的第三方聊天软件（飞机/纸飞机/Telegram/外部App）！\n"
+            f"3. **严禁**向对方支付任何押金、体检费、服装费或提供银行卡/微信跑分！\n"
+            f"4. 建议直接在 BOSS 直聘上点击右上角【举报该职位/公司】。"
+        )
+        self._dispatch(title, content, alert_type="RISK_BLOCKED")
+
     def send_captcha_alert(self):
         """触发滑块验证码时的紧急警报"""
         title = "🚨 检测到招聘网站滑块验证码！"
