@@ -1,11 +1,14 @@
 """
-Crash-Proof Single Live Battle Verification Runner for BOSS 直聘.
-Features:
-1. Dynamic active page recovery (immune to TargetClosedError during page reloads/WeChat scan).
-2. Polite login-expired waiting loop with automatic continuation upon login.
-3. Automatically retrieves non-Hunan job cards, skips skeleton loaders.
-4. Clicks target card on screen, clicks '立即沟通', confirms modal, and sends real message!
-5. Permanently keeps the Chrome window open on desktop.
+Guaranteed Login & Live HR Communication Runner for BOSS 直聘.
+Step-by-step:
+1. Opens visible Chrome at BOSS homepage (https://www.zhipin.com).
+2. Checks if logged in:
+   - If NOT logged in: Pops up QR login modal, waits for user to scan once.
+   - If logged in: Seamlessly proceeds.
+3. Navigates to live target search (Shanghai Overseas CS / Non-Hunan).
+4. Extracts real job cards, skipping skeleton placeholders.
+5. Clicks target card on screen, clicks '立即沟通', confirms modal, sends message!
+6. Permanently keeps the Chrome window open on desktop.
 """
 import sys
 import os
@@ -25,7 +28,7 @@ from src.battle_logger import log_event
 
 
 def get_live_page(context):
-    """获取当前可用的非关闭页面"""
+    """获取当前可用的非关闭前台页面"""
     for p in reversed(context.pages):
         try:
             if not p.is_closed():
@@ -35,88 +38,79 @@ def get_live_page(context):
     return None
 
 
-async def check_login_and_security(context, target_url):
-    """检测登录过期、二维码登录与安全验证码（防页面刷新崩溃）"""
-    while True:
-        page = get_live_page(context)
-        if not page:
-            page = await context.new_page()
-            
+async def ensure_logged_in(context):
+    """确保 BOSS 直聘处于登录状态，未登录则引导扫码"""
+    page = get_live_page(context)
+    if not page:
+        page = await context.new_page()
+        
+    print("1. 正在访问 BOSS 直聘主页检查登录凭证...")
+    try:
+        await page.goto("https://www.zhipin.com", wait_until="domcontentloaded", timeout=25000)
+    except Exception as e:
+        print(f"   主页加载通知: {e}")
+        
+    await asyncio.sleep(2)
+    await page.bring_to_front()
+    
+    # 检查是否已登录（检测右上角头像或用户名）
+    avatar_elem = await page.query_selector(".nav-figure, .header-login .avatar, [class*='avatar'], .user-nav, .user-name")
+    login_btn = await page.query_selector(".btn-sign-switch, a:has-text('登录/注册'), a:has-text('登录'), .header-login")
+    
+    if login_btn and not avatar_elem:
+        print("\n" + "╔" + "═"*62 + "╗")
+        print("║  🔑 【检测到 BOSS 直聘未登录 / 登录状态已失效】              ║")
+        print("║  👉 请在当前打开的 Chrome 窗口中用【微信扫码】登录一次       ║")
+        print("║  ⏳ 系统正在实时监听，您扫码成功后将自动永久保存登录凭证！  ║")
+        print("╚" + "═"*62 + "╝\n")
+        
         try:
-            cur_url = page.url
-        except Exception:
-            await asyncio.sleep(1.0)
-            continue
-
-        # 1. 检测是否处于登录失效或需要登录状态
-        is_login = "login" in cur_url or "user" in cur_url
-        login_box = None
-        try:
-            login_box = await page.query_selector(".login-dialog, .login-wrap, .dialog-login, .login-box-warp, [class*='login-dialog']")
+            # 自动点击登录按钮弹出二维码
+            await login_btn.click()
         except Exception:
             pass
+            
+        # 循环等待用户扫码成功
+        for _ in range(180): # 最多等待 3 分钟
+            await asyncio.sleep(2.0)
+            p_live = get_live_page(context)
+            if not p_live:
+                continue
+            try:
+                cur_avatar = await p_live.query_selector(".nav-figure, .avatar, [class*='avatar'], .user-nav, .user-name, [class*='user-info']")
+                if cur_avatar or "geek" in p_live.url or "web/user" not in p_live.url and await p_live.query_selector("a:has-text('消息')"):
+                    print("🎉 ✅ 恭喜！微信扫码登录成功！登录凭证已永久保存！\n")
+                    await asyncio.sleep(2)
+                    return p_live
+            except Exception:
+                pass
+                
+    else:
+        print("✅ 登录凭证有效，已处于已登录状态！")
         
-        if is_login or login_box:
-            print("\n" + "╔" + "═"*62 + "╗")
-            print("║  🚨 【检测到 BOSS 直聘登录状态已过期】                       ║")
-            print("║  👉 请在当前打开的 Chrome 窗口中完成微信扫码或手机号登录一次  ║")
-            print("║  ⏳ 系统正在全自动监听，您登录成功后将立即自动接管并沟通！  ║")
-            print("╚" + "═"*62 + "╝\n")
-            
-            while True:
-                await asyncio.sleep(2.0)
-                page = get_live_page(context)
-                if not page:
-                    continue
-                try:
-                    still_login = "login" in page.url or "user" in page.url
-                    still_box = await page.query_selector(".login-dialog, .login-wrap, .dialog-login")
-                    if not (still_login or still_box):
-                        break
-                except Exception:
-                    pass
-                
-            print("🎉 ✅ 登录成功！系统立即重新连接目标岗位靶场...\n")
-            await asyncio.sleep(2.0)
-            page = get_live_page(context)
-            if page:
-                try:
-                    await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
-                except Exception:
-                    pass
-            continue
-
-        # 2. 检测验证码
-        if "verify.html" in cur_url or "security.html" in cur_url:
-            print("\n" + "╔" + "═"*62 + "╗")
-            print("║  🚨 【检测到 BOSS 直聘安全验证码】                           ║")
-            print("║  👉 请在您屏幕上的 Chrome 窗口中点击/滑动完成验证            ║")
-            print("║  ⏳ 系统正在全自动监听，您点过验证码后将立即自动继续！      ║")
-            print("╚" + "═"*62 + "╝\n")
-            
-            while True:
-                await asyncio.sleep(1.5)
-                page = get_live_page(context)
-                if not page:
-                    continue
-                try:
-                    if "verify.html" not in page.url and "security.html" not in page.url:
-                        break
-                except Exception:
-                    pass
-                
-            print("🎉 ✅ 检测到验证码已成功解除！系统立即无缝接管，开始检索高危靶场岗位...\n")
-            await asyncio.sleep(2.0)
-            continue
-            
-        # 正常状态退出检测循环
-        break
     return page
+
+
+async def check_captcha_if_needed(page):
+    """检测并等待图形验证码"""
+    if "verify.html" in page.url or "security.html" in page.url:
+        print("\n" + "╔" + "═"*62 + "╗")
+        print("║  🚨 【检测到 BOSS 直聘安全验证码】                           ║")
+        print("║  👉 请在您屏幕上的 Chrome 窗口中点击/滑动完成验证            ║")
+        print("║  ⏳ 系统正在全自动监听，您点过验证码后将立即自动继续！      ║")
+        print("╚" + "═"*62 + "╝\n")
+        
+        while "verify.html" in page.url or "security.html" in page.url:
+            await asyncio.sleep(1.5)
+            
+        print("🎉 ✅ 验证码已解除！系统立即无缝接管...\n")
+        await asyncio.sleep(2.0)
+    return True
 
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘高危实战靶场【防崩自愈·真机有头实战沟通】启动")
+    print("🎯 BOSS 直聘高危实战靶场【登录凭证确权 ➔ 真实选岗 ➔ 真机点击沟通】启动")
     print("="*70 + "\n")
     
     config_mgr = ConfigManager()
@@ -157,12 +151,16 @@ async def main():
                     
         await page.bring_to_front()
         
-        # 1. 打开非湖南高危搜索页
+        # 1. 确保已登录（未登录则在主页扫码）
+        page = await ensure_logged_in(context)
+        await page.bring_to_front()
+        
+        # 2. 打开非湖南高危实战搜索页
         search_kw = "海外客服"
         city_code = "101020100" # 上海
         target_url = f"https://www.zhipin.com/web/geek/job?query={search_kw}&city={city_code}"
         
-        print(f"2. 正在加载 BOSS 直聘实战靶场: 【上海·{search_kw}】...")
+        print(f"\n2. 正在加载实战目标靶场: 【上海·{search_kw}】...")
         print(f"   URL: {target_url}")
         
         try:
@@ -170,10 +168,10 @@ async def main():
         except Exception as e:
             print(f"   页面加载通知: {e}")
             
-        # 检查登录与验证码（防刷新崩溃）
-        page = await check_login_and_security(context, target_url)
         await page.bring_to_front()
+        await check_captcha_if_needed(page)
         
+        # 3. 等待岗位卡片数据流注水
         print("\n3. 正在等待岗位数据流渲染并注水文字...")
         cards = []
         for sec in range(25):
@@ -183,6 +181,8 @@ async def main():
             if not page:
                 continue
                 
+            await check_captcha_if_needed(page)
+                
             # 滚轮激活
             if sec % 2 == 0:
                 try:
@@ -190,7 +190,7 @@ async def main():
                 except Exception:
                     pass
 
-            # 抓取卡片
+            # 抓取真实卡片
             for sel in [".job-card-wrapper", ".job-card-box", "li.job-card", ".job-list-box li", ".job-card-left", ".job-primary", "[class*='job-card']"]:
                 try:
                     elems = await page.query_selector_all(sel)
