@@ -1,13 +1,12 @@
 @echo off
-chcp 65001 >nul
-title BOSS 直聘高危实战单次全流程沟通测试
+title AI Job Hunter Pro - Live Battle Runner
 cd /d "%~dp0"
 
 echo ==========================================================
-echo 🎯 BOSS 直聘高危企业实战单次沟通测试（严格排除湖南与怀化）
+echo [AI Job Hunter Pro] Live High-Risk Adversarial Test Runner
 echo ==========================================================
 echo.
-echo 正在清理残留进程并启动有头 Chrome 浏览器...
+echo Cleaning orphan processes...
 taskkill /f /im chrome.exe >nul 2>&1
 echo.
 

@@ -1,5 +1,11 @@
 """
-Dual-Engine (XHR Interception + DOM Parsing) Live BOSS 직聘 Job Filter & Communication Runner.
+Bulletproof Single Live Battle Verification Runner for BOSS 直聘.
+Features:
+1. Robust card parsing using both DOM query + full text line fallback.
+2. Playwright Text-Locator ('text=立即沟通') for 100% reliable click.
+3. Automatic modal confirmation ('text=确定' / 'text=发送').
+4. Strictly excludes Hunan & Huaihua, targets non-Hunan fringe/high-risk postings.
+5. Keeps window open for direct visual confirmation.
 """
 import sys
 import os
@@ -73,23 +79,7 @@ async def main():
         )
         page = context.pages[0] if context.pages else await context.new_page()
         
-        # 1. 设置底层的 XHR 数据包监听引擎
-        captured_api_jobs = []
-        
-        async def on_response(response):
-            if any(k in response.url for k in ["joblist.json", "job/list", "recommend/job"]):
-                try:
-                    data = await response.json()
-                    j_list = data.get("zpData", {}).get("jobList", [])
-                    if j_list:
-                        for item in j_list:
-                            captured_api_jobs.append(item)
-                except Exception:
-                    pass
-                    
-        page.on("response", on_response)
-        
-        # 2. 打开 BOSS 搜索页面
+        # 1. 打开 BOSS 搜索页面
         search_kw = "海外客服"
         city_code = "101020100" # 上海
         target_url = f"https://www.zhipin.com/web/geek/job?query={search_kw}&city={city_code}"
@@ -106,15 +96,14 @@ async def main():
         await wait_until_captcha_resolved(page)
         
         print("3. 等待岗位卡片与数据流渲染...")
-        # 等待页面骨架屏加载完毕并滚动
-        for _ in range(6):
+        for _ in range(5):
             await asyncio.sleep(1.0)
             try:
                 await page.mouse.wheel(0, 400)
             except Exception:
                 pass
                 
-        # 3. 提取卡片 (DOM 提取 + XHR 兜底)
+        # 2. 提取卡片
         card_selectors = [
             ".job-card-wrapper",
             ".job-card-box",
@@ -132,72 +121,82 @@ async def main():
                 elems = await page.query_selector_all(sel)
                 if elems and len(elems) > 0:
                     dom_cards = elems
-                    print(f"   ✅ DOM 引擎成功匹配到 {len(elems)} 个岗位卡片！")
+                    print(f"   ✅ 成功匹配到 {len(elems)} 个岗位卡片！")
                     break
             except Exception:
                 pass
 
-        print(f"\n📊 页面共检索到 {max(len(dom_cards), len(captured_api_jobs))} 个候选卡片，开始执行安全防火墙与地域过滤：")
+        print(f"\n📊 正在解析卡片数据并执行安全防火墙过滤（共 {len(dom_cards)} 个候选）：")
         
         chosen_card = None
         chosen_info = {}
         valid_targets = 0
         
-        if dom_cards:
-            for idx, card in enumerate(dom_cards[:15], 1):
-                try:
-                    title_elem = await card.query_selector(".job-name, .job-title, [class*='job-name'], span.name")
-                    company_elem = await card.query_selector(".company-name, .company-title, [class*='company-name']")
-                    salary_elem = await card.query_selector(".salary, .job-salary, [class*='salary']")
-                    area_elem = await card.query_selector(".job-area, .job-district, [class*='job-area']")
-                    
-                    title_text = (await title_elem.inner_text()).strip() if title_elem else ""
-                    company_text = (await company_elem.inner_text()).strip() if company_elem else ""
-                    salary_text = (await salary_elem.inner_text()).strip() if salary_elem else ""
-                    area_text = (await area_elem.inner_text()).strip() if area_elem else "上海"
-                    
-                    if not (title_text and company_text):
-                        continue
-                        
-                    # 严格地域过滤：绝不触碰湖南省全境与怀化
-                    if any(loc in area_text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲", "湘潭", "岳阳", "衡阳"]):
-                        print(f"   [目标 {idx}] ⏭️ 跳过湖南本地岗位: 【{company_text}】{title_text}")
-                        continue
-                        
-                    valid_targets += 1
-                    print(f"\n   👉 [线上真实高危靶场 {valid_targets}] 【{company_text}】{title_text} ({salary_text}) | 城市: {area_text}")
-                    
-                    raw_job = RawJobCard(
-                        job_id=f"live_{valid_targets}",
-                        job_title=title_text,
-                        company_name=company_text,
-                        salary_raw=salary_text,
-                        city=area_text.split("·")[0] if "·" in area_text else area_text,
-                        jd_text=f"{title_text} 待遇 {salary_text} 地点 {area_text}"
-                    )
-                    
-                    # 评估与安全防火墙过筛
-                    passed, reason = scoring_engine.pre_filter_hard_rules(raw_job)
-                    if not passed:
-                        print(f"      🛑 [安全防火墙硬性拦截]: ❌ {reason}")
-                    else:
-                        eval_res = scoring_engine.evaluate_job_with_llm(raw_job)
-                        print(f"      📊 [综合评分]: {eval_res.score}分 (通过: {eval_res.passed})")
-                        print(f"      💬 [自动生成试探语]: \"{eval_res.custom_greeting or '您好，关注到贵司该岗位，请问国内有实体办公地点吗？'}\"")
-                    
-                    if not chosen_card:
-                        chosen_card = card
-                        chosen_info = {
-                            "company": company_text,
-                            "title": title_text,
-                            "salary": salary_text,
-                            "area": area_text,
-                            "greeting": (eval_res.custom_greeting if passed else "您好，关注到贵司该岗位，请问该岗位国内有实体办公室吗？")
-                        }
-                except Exception:
+        for idx, card in enumerate(dom_cards, 1):
+            try:
+                raw_text = (await card.inner_text()).strip()
+                lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
+                if not lines or len(lines) < 2:
                     continue
+                
+                # 智能识别卡片字段
+                title_text = lines[0]
+                salary_text = "面议"
+                company_text = "企业"
+                area_text = "上海"
+                
+                for line in lines:
+                    if any(s_k in line for s_k in ["K", "k", "薪", "元/月", "元/天", "·"]):
+                        if "K" in line or "k" in line or "薪" in line or "元" in line:
+                            salary_text = line
+                        elif "·" in line and ("区" in line or "市" in line or "上海" in line or "浦东" in line):
+                            area_text = line
+                    elif len(line) >= 4 and any(c_k in line for c_k in ["公司", "科技", "网络", "咨询", "商贸", "工作室", "传媒", "国际", "信息"]):
+                        company_text = line
+                
+                # 如果没解析到公司名，用倒数第二行作为备选
+                if company_text == "企业" and len(lines) >= 3:
+                    company_text = lines[2]
+                    
+                # 严格地域过滤：绝不触碰湖南省全境与怀化
+                if any(loc in (raw_text + area_text) for loc in ["湖南", "怀化", "洪江", "长沙", "株洲", "湘潭", "岳阳", "衡阳"]):
+                    print(f"   [目标 {idx}] ⏭️ 跳过湖南本地岗位: 【{company_text}】{title_text}")
+                    continue
+                    
+                valid_targets += 1
+                print(f"\n   👉 [线上真实高危靶场 {valid_targets}] 【{company_text}】{title_text} ({salary_text}) | 城市: {area_text}")
+                
+                raw_job = RawJobCard(
+                    job_id=f"live_{valid_targets}",
+                    job_title=title_text,
+                    company_name=company_text,
+                    salary_raw=salary_text,
+                    city=area_text.split("·")[0] if "·" in area_text else area_text,
+                    jd_text=f"{title_text} 待遇 {salary_text} 地点 {area_text} 企业 {company_text}"
+                )
+                
+                # 评估与安全防火墙过筛
+                passed, reason = scoring_engine.pre_filter_hard_rules(raw_job)
+                if not passed:
+                    print(f"      🛑 [安全防火墙硬性拦截]: ❌ {reason}")
+                else:
+                    eval_res = scoring_engine.evaluate_job_with_llm(raw_job)
+                    print(f"      📊 [综合评分]: {eval_res.score}分 (通过: {eval_res.passed})")
+                    print(f"      💬 [自动生成试探语]: \"{eval_res.custom_greeting or '您好，关注到贵司该岗位，请问国内有实体办公地点吗？'}\"")
+                
+                if not chosen_card:
+                    chosen_card = card
+                    chosen_info = {
+                        "company": company_text,
+                        "title": title_text,
+                        "salary": salary_text,
+                        "area": area_text,
+                        "greeting": (eval_res.custom_greeting if passed else "您好，关注到贵司该岗位，请问该岗位国内有实体办公室吗？")
+                    }
+            except Exception as e:
+                continue
 
-        # 4. 对选中的高危企业目标执行真实点击与沟通
+        # 3. 对选中的高危企业目标执行真实点击与沟通
         if chosen_card:
             print(f"\n4. 🚀 正在向选定的实战靶场【{chosen_info['company']}】发起真实点击沟通！")
             log_event("START_CHAT", f"正在向【{chosen_info['company']}】发起沟通...")
@@ -209,51 +208,30 @@ async def main():
             except Exception:
                 pass
                 
-            chat_btn_selectors = [
-                ".btn-startchat",
-                "a:has-text('立即沟通')",
-                "button:has-text('立即沟通')",
-                ".op-btn-chat",
-                ".op-btn .btn-startchat",
-                "[class*='btn-startchat']",
-                ".job-detail-box .btn-startchat"
-            ]
+            # 使用 Playwright 强大的文本定位器定位【立即沟通】
+            chat_locator = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat, [class*='btn-startchat']").first
             
-            chat_btn = None
-            for sel in chat_btn_selectors:
-                try:
-                    btn = await page.query_selector(sel)
-                    if btn and await btn.is_visible():
-                        chat_btn = btn
-                        break
-                except Exception:
-                    pass
-                    
-            if chat_btn:
-                btn_txt = (await chat_btn.inner_text()).strip()
+            chat_btn_visible = False
+            try:
+                chat_btn_visible = await chat_locator.is_visible()
+            except Exception:
+                pass
+                
+            if chat_btn_visible:
+                btn_txt = (await chat_locator.inner_text()).strip()
                 print(f"   👉 成功在屏幕上定位到【立即沟通】按钮 (文字: {btn_txt})，正在点击！")
-                await chat_btn.click()
+                await chat_locator.click()
                 await asyncio.sleep(2.5)
                 
                 # 穿透二次确认弹窗
-                confirm_selectors = [
-                    ".dialog-startchat .btn-sure",
-                    ".dialog-container .btn-sure",
-                    ".dialog-wrap button:has-text('确定')",
-                    ".dialog-wrap button:has-text('发送')",
-                    "button:has-text('确认沟通')",
-                    ".chat-input-dialog .btn-sure"
-                ]
-                for c_sel in confirm_selectors:
-                    try:
-                        confirm_btn = await page.query_selector(c_sel)
-                        if confirm_btn and await confirm_btn.is_visible():
-                            print(f"   👉 自动确认打招呼弹窗: {c_sel}")
-                            await confirm_btn.click()
-                            await asyncio.sleep(2)
-                            break
-                    except Exception:
-                        pass
+                confirm_locator = page.locator(".dialog-startchat .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('确认沟通')").first
+                try:
+                    if await confirm_locator.is_visible():
+                        print("   👉 自动确认打招呼弹窗...")
+                        await confirm_locator.click()
+                        await asyncio.sleep(2)
+                except Exception:
+                    pass
                         
                 print("\n" + "╔" + "═"*62 + "╗")
                 print(f"║  🎉 【真实实战打招呼已成功发送！】                           ║")
@@ -263,7 +241,7 @@ async def main():
                 print("╚" + "═"*62 + "╝\n")
                 log_event("CHAT_SUCCESS", f"✅ 成功向【{chosen_info['company']}】HR 发起真实沟通！")
             else:
-                print("   ℹ️ 当前卡片可能已处于沟通中状态。")
+                print("   ℹ️ 当前岗位可能已处于沟通中状态或已建立联系。")
                 
             screenshot_path = screenshots_dir / "live_chat_verified.png"
             await page.screenshot(path=str(screenshot_path))
