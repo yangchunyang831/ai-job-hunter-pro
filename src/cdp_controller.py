@@ -1,4 +1,5 @@
 """Playwright CDP Browser Controller for real Chrome connection, human-like interaction, and DOM/XHR scraping."""
+import os
 import time
 import random
 import logging
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class CDPBrowserController:
-    """真实 Chrome CDP 浏览器控制器"""
+    """真实 Chrome CDP 浏览器控制器 (支持 CDP 直连 + 自动拉起有头浏览器自愈)"""
     def __init__(self, cdp_url: str = "http://127.0.0.1:9222", notifier: Optional[NotificationManager] = None, stop_event: Optional[threading.Event] = None):
         self.cdp_url = cdp_url
         self.notifier = notifier or NotificationManager()
@@ -24,19 +25,48 @@ class CDPBrowserController:
         self.chat_page: Optional[Page] = None
 
     def connect(self):
-        """连接到带有 --remote-debugging-port 的日常 Chrome 实例"""
+        """连接到带有 --remote-debugging-port 的 Chrome 实例，若未启动则自动自愈拉起有头浏览器"""
         logger.info(f"Connecting to Chrome via CDP: {self.cdp_url} ...")
         self._playwright = sync_playwright().start()
+        
+        # 1. 优先尝试直接连接已存在的 9222 CDP 调试端口
         try:
             self.browser = self._playwright.chromium.connect_over_cdp(self.cdp_url)
             self.context = self.browser.contexts[0]
-            logger.info("Successfully connected to real Chrome instance!")
+            logger.info("✅ 成功连接到前台已运行的 Chrome CDP 实例！")
+            return
         except Exception as e:
-            logger.error(f"Failed to connect to Chrome at {self.cdp_url}: {e}")
-            raise RuntimeError(
-                "无法连接到 Chrome 浏览器！请确保在命令行中运行了：\n"
-                "chrome.exe --remote-debugging-port=9222 --user-data-dir=\"C:\\chrome_debug_profile\""
-            ) from e
+            logger.warning(f"CDP 端口 {self.cdp_url} 未就绪 ({e})，正在自动为您启动桌面可视化有头 Chrome 浏览器...")
+
+        # 2. 若未启动，全自动在桌面拉起有头 Chrome 窗口 (无需用户手动开命令行)
+        chrome_paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expanduser(r"~\AppData\Local\Google\Chrome\Application\chrome.exe")
+        ]
+        chosen_exe = None
+        for cp in chrome_paths:
+            if os.path.exists(cp):
+                chosen_exe = cp
+                break
+                
+        user_data_dir = r"C:\chrome_debug_profile"
+        try:
+            self.context = self._playwright.chromium.launch_persistent_context(
+                user_data_dir=user_data_dir,
+                executable_path=chosen_exe,
+                headless=False,
+                viewport={"width": 1440, "height": 900},
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-first-run",
+                    "--no-default-browser-check"
+                ]
+            )
+            logger.info(f"🎉 成功自动为您在桌面启动有头 Chrome 浏览器 (Profile: {user_data_dir})！")
+        except Exception as launch_err:
+            logger.error(f"自动启动 Chrome 失败: {launch_err}")
+            raise RuntimeError(f"无法自动拉起 Chrome 浏览器: {launch_err}") from launch_err
 
     def close(self):
         """释放资源"""
