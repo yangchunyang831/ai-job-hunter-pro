@@ -1,10 +1,11 @@
 """
-Diagnostic and Direct Visual High-Risk Runner for BOSS 直聘.
+Zero-Failure Single Live Battle Verification Runner for BOSS 直聘.
 Features:
-1. Takes a screenshot at each stage and logs current URL & visible text.
-2. Robust selector search across entire DOM tree.
-3. Automatically triggers search bar typing if query url redirects to blank.
-4. Directly clicks the first non-Hunan card and clicks "立即沟通".
+1. Closes orphan about:blank tabs, ensures only 1 active foreground page.
+2. Direct navigation with immediate commit to prevent frozen blank state.
+3. Automatically brings window to front.
+4. Auto-detects Geetest/Verify captcha and resumes after user passes it.
+5. Scrapes non-Hunan jobs, clicks target card, clicks '立即沟通', and confirms modal!
 """
 import sys
 import os
@@ -23,9 +24,27 @@ from src.schemas import RawJobCard
 from src.battle_logger import log_event
 
 
+async def wait_until_captcha_resolved(page):
+    """检测并等待图形验证码解除"""
+    if "verify.html" in page.url or "security.html" in page.url:
+        print("\n" + "╔" + "═"*62 + "╗")
+        print("║  🚨 【检测到 BOSS 直聘安全验证码】                           ║")
+        print("║  👉 请在您屏幕上的 Chrome 窗口中点击/滑动完成验证            ║")
+        print("║  ⏳ 系统正在全自动监听，您点过验证码后将立即自动继续！      ║")
+        print("╚" + "═"*62 + "╝\n")
+        
+        while True:
+            await asyncio.sleep(1.5)
+            if "verify.html" not in page.url and "security.html" not in page.url:
+                print("🎉 ✅ 检测到验证码已成功解除！系统立即无缝接管，开始检索高危靶场岗位...\n")
+                await asyncio.sleep(3)
+                return True
+    return True
+
+
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘高危实战靶场【真机有头·实时视觉捕获与直连沟通】")
+    print("🎯 BOSS 直聘高危实战靶场【零白屏·真机有头实战沟通】启动")
     print("="*70 + "\n")
     
     config_mgr = ConfigManager()
@@ -38,6 +57,8 @@ async def main():
     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
     
     print("1. 正在启动可视化 Chrome 窗口...")
+    log_event("HEADFUL_START", "启动桌面可视化 Chrome...")
+    
     async with async_playwright() as p:
         context = await p.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
@@ -50,28 +71,49 @@ async def main():
                 "--no-default-browser-check"
             ]
         )
-        page = context.pages[0] if context.pages else await context.new_page()
         
-        # 1. 打开首页或搜索页
-        target_url = "https://www.zhipin.com/web/geek/job?query=%E6%B5%B7%E5%A4%96%E5%AE%A2%E6%9C%8D&city=101020100"
-        print(f"2. 正在访问: {target_url} ...")
+        # 彻底消除多标签页与 about:blank 占位：只保留单个前台工作页面
+        if not context.pages:
+            page = await context.new_page()
+        else:
+            page = context.pages[0]
+            # 关闭其余多余的空白标签页
+            for extra_p in context.pages[1:]:
+                try:
+                    await extra_p.close()
+                except Exception:
+                    pass
+                    
+        await page.bring_to_front()
+        
+        # 1. 打开非湖南高危搜索页
+        search_kw = "海外客服"
+        city_code = "101020100" # 上海
+        target_url = f"https://www.zhipin.com/web/geek/job?query={search_kw}&city={city_code}"
+        
+        print(f"2. 正在强力加载 BOSS 直聘靶场: 【上海·{search_kw}】...")
+        print(f"   URL: {target_url}")
         
         try:
-            await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+            await page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
         except Exception as e:
-            print(f"   页面跳转通知: {e}")
+            print(f"   页面加载通知: {e}")
             
-        # 自愈机制：如果依然停留在 about:blank，立即重新执行导航
+        await page.bring_to_front()
+        print(f"   当前前台页面 URL: {page.url}")
+        
+        # 如果还是 about:blank，强行再次跳转
         if page.url == "about:blank":
-            print("   👉 检测到空白页，正在重新连接 BOSS 直聘目标靶场...")
+            print("   👉 正在重试导航至 BOSS 直聘...")
             try:
-                await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+                await page.goto(target_url, wait_until="commit", timeout=25000)
             except Exception:
                 pass
-            
-        print("\n⏳ 正在监听页面渲染与安全验证状态（如有验证码请在窗口中点击完成）...")
+                
+        # 智能等待验证码
+        await wait_until_captcha_resolved(page)
         
-        # 动态等待：直到页面出现 job 卡片，或者用户完成验证码
+        print("\n3. 正在等待岗位数据流渲染并注水文字...")
         cards = []
         for sec in range(25):
             await asyncio.sleep(1.0)
@@ -79,11 +121,11 @@ async def main():
             # 检查是否有验证码
             if "verify.html" in page.url or "security.html" in page.url:
                 if sec % 3 == 0:
-                    print(f"   🚨 [等待验证码完成] 请在 Chrome 窗口中点击图形验证码... ({sec}s)")
+                    print(f"   🚨 [等待验证码完成] 请在 Chrome 窗口中完成验证... ({sec}s)")
                 continue
                 
-            # 尝试滚轮激活
-            if sec % 3 == 0:
+            # 滚轮激活
+            if sec % 2 == 0:
                 try:
                     await page.mouse.wheel(0, 300)
                 except Exception:
@@ -94,7 +136,6 @@ async def main():
                 try:
                     elems = await page.query_selector_all(sel)
                     if elems and len(elems) > 0:
-                        # 确保卡片内部有文字
                         txt = await elems[0].inner_text()
                         if len(txt.strip()) > 10:
                             cards = elems
@@ -103,18 +144,14 @@ async def main():
                     pass
                     
             if cards:
-                print(f"\n🎉 ✅ 成功在第 {sec+1} 秒捕获到 {len(cards)} 个已完成渲染的真实岗位卡片！")
+                print(f"   🎉 ✅ 成功在第 {sec+1} 秒捕获到 {len(cards)} 个已填充数据的真实岗位卡片！")
                 break
                 
-        # 截屏留存当前页面状态
-        await page.screenshot(path=str(screenshots_dir / "live_search_rendered.png"))
-        
         if not cards:
-            print("⚠️ 未直接匹配到标准卡片，尝试从页面文本块中提取...")
-            # 尝试通过页面所有可点击块提取
+            print("   ⚠️ 正在从页面全局节点抓取卡片...")
             cards = await page.query_selector_all("ul > li, div.card, a[href*='job_detail']")
 
-        print(f"\n📊 开始遍历并筛选前 {min(len(cards), 10)} 个线上岗位：")
+        print(f"\n📊 开始筛选非湖南真实岗位（共 {len(cards)} 个候选）：")
         
         chosen_target = None
         
@@ -176,17 +213,18 @@ async def main():
             except Exception as e:
                 continue
 
-        # 3. 点击卡片并点击【立即沟通】
+        # 4. 点击卡片展开详情并点击【立即沟通】
         if chosen_target:
             print(f"\n4. 🚀 正在向选定目标【{chosen_target['company']}】执行真机点击与沟通！")
             try:
+                await chosen_target["card"].scroll_into_view_if_needed()
                 await chosen_target["card"].click()
                 await asyncio.sleep(2.5)
             except Exception:
                 pass
                 
             # 定位立即沟通按钮
-            chat_btn = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat").first
+            chat_btn = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat, [class*='btn-startchat']").first
             try:
                 if await chat_btn.is_visible():
                     btn_text = (await chat_btn.inner_text()).strip()
@@ -195,7 +233,7 @@ async def main():
                     await asyncio.sleep(2.5)
                     
                     # 确认弹窗
-                    confirm_btn = page.locator(".dialog-startchat .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('确认沟通')").first
+                    confirm_btn = page.locator(".dialog-startchat .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('确认沟通'), button:has-text('继续沟通')").first
                     try:
                         if await confirm_btn.is_visible():
                             print("   👉 自动确认打招呼弹窗并发送...")
@@ -214,8 +252,9 @@ async def main():
             except Exception as e:
                 print("   ⚠️ 沟通点击异常:", e)
                 
-            await page.screenshot(path=str(screenshots_dir / "live_chat_verified.png"))
-            print(f"   📸 实况页面已截屏留证: live_chat_verified.png")
+            screenshot_path = screenshots_dir / "live_chat_verified.png"
+            await page.screenshot(path=str(screenshot_path))
+            print(f"   📸 实况页面已截屏留证: {screenshot_path.name}")
             
         print("\n" + "="*70)
         print("🎉 【实战全流程 100% 执行完毕！】Chrome 窗口常驻桌面供您直接核验！")
