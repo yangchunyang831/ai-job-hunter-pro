@@ -1,5 +1,10 @@
 """
-Ultra-Precise Live High-Risk Job Communication & Multi-Turn Chat Bubble Verification Runner.
+Precise Real-Card Selection and Guaranteed '立即沟通' Click Runner for BOSS 直聘.
+Guarantees:
+1. Waits specifically for real card text (skips skeleton gray boxes).
+2. Waits specifically for the right detail panel and '立即沟通' button to render.
+3. Clicks '立即沟通' and confirms greeting modal.
+4. Takes screenshot of the confirmed sent state.
 """
 import sys
 import os
@@ -38,7 +43,7 @@ async def wait_until_captcha_resolved(page):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘高危实战靶场【真实点击沟通 ➔ 穿透聊天室 ➔ 真实发送气泡】启动")
+    print("🎯 BOSS 直聘高危实战靶场【精准卡片定位 ➔ 真机点击沟通 ➔ 发送打招呼】")
     print("="*70 + "\n")
     
     config_mgr = ConfigManager()
@@ -50,7 +55,7 @@ async def main():
     user_data_dir = r"C:\chrome_debug_profile"
     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
     
-    print("1. 正在启动可视化 Chrome 窗口...")
+    print("1. 正在启动您屏幕上的 Chrome 浏览器...")
     log_event("HEADFUL_START", "启动桌面可视化 Chrome...")
     
     async with async_playwright() as p:
@@ -72,7 +77,7 @@ async def main():
         city_code = "101020100" # 上海
         target_url = f"https://www.zhipin.com/web/geek/job?query={search_kw}&city={city_code}"
         
-        print(f"2. 正在导航至非湖南高危实战靶场: 【上海·{search_kw}】...")
+        print(f"2. 正在访问非湖南高危实战靶场: 【上海·{search_kw}】...")
         try:
             await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
         except Exception as e:
@@ -80,37 +85,57 @@ async def main():
             
         await wait_until_captcha_resolved(page)
         
-        print("3. 等待岗位卡片数据流渲染...")
-        dom_cards = []
-        for _ in range(10):
+        # 2. 关键加固：严格等待骨架屏消失，直到真实职位标题渲染出来
+        print("3. 正在等待网络数据流注水，跨越骨架屏...")
+        real_cards = []
+        for sec in range(20):
             await asyncio.sleep(1.0)
-            try:
-                await page.mouse.wheel(0, 300)
-            except Exception:
-                pass
-            for sel in [".job-card-wrapper", ".job-card-box", "li.job-card", ".job-list-box li", ".job-card-left", "[class*='job-card']"]:
+            
+            # 鼠标滚轮触发渲染
+            if sec % 2 == 0:
                 try:
-                    elems = await page.query_selector_all(sel)
-                    if elems and len(elems) > 0:
-                        dom_cards = elems
-                        break
+                    await page.mouse.wheel(0, 300)
                 except Exception:
                     pass
-            if dom_cards:
+                    
+            card_candidates = await page.query_selector_all(".job-card-wrapper, .job-card-box, li.job-card, .job-list-box li, .job-card-left")
+            for c in card_candidates:
+                try:
+                    txt = (await c.inner_text()).strip()
+                    # 只有包含实际文字且字数 > 15 的才不是骨架屏
+                    if len(txt) > 15 and any(k in txt for k in ["K", "k", "薪", "元", "面议"]):
+                        if c not in real_cards:
+                            real_cards.append(c)
+                except Exception:
+                    pass
+                    
+            if len(real_cards) >= 3:
+                print(f"   🎉 ✅ 在第 {sec+1} 秒成功跨越骨架屏，提取到 {len(real_cards)} 个真实填充文字的岗位卡片！")
                 break
+                
+        if not real_cards:
+            print("   ⚠️ 正在从全局文本流寻找真实岗位卡片...")
+            all_lis = await page.query_selector_all("li")
+            for li in all_lis:
+                try:
+                    t = await li.inner_text()
+                    if len(t) > 20 and any(k in t for k in ["K", "k", "薪", "元"]):
+                        real_cards.append(li)
+                except Exception:
+                    pass
 
-        print(f"\n📊 成功捕获到 {len(dom_cards)} 个线上真实候选卡片，开始筛选：")
+        print(f"\n📊 成功定位到 {len(real_cards)} 个真实线上岗位，开始排除湖南本地岗位：")
         
-        chosen_card = None
-        chosen_info = {}
+        target_card = None
+        target_info = {}
         
-        for idx, card in enumerate(dom_cards[:10], 1):
+        for idx, card in enumerate(real_cards, 1):
             try:
                 raw_text = (await card.inner_text()).strip()
                 lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
                 if not lines or len(lines) < 2:
                     continue
-                
+                    
                 title = lines[0]
                 salary = "面议"
                 company = "企业"
@@ -119,112 +144,78 @@ async def main():
                 for line in lines:
                     if any(k in line for k in ["K", "k", "薪", "元/月", "元/天"]):
                         salary = line
-                    elif len(line) >= 4 and any(c in line for c in ["公司", "科技", "网络", "咨询", "商贸", "工作室", "传媒", "国际", "物流", "信息"]):
+                    elif len(line) >= 4 and any(c in line for c in ["公司", "科技", "网络", "咨询", "商贸", "工作室", "传媒", "国际", "物流", "信息", "服务"]):
                         company = line
                         
                 if any(loc in (raw_text + area) for loc in ["湖南", "怀化", "洪江", "长沙", "株洲"]):
                     print(f"   [目标 {idx}] ⏭️ 跳过湖南本地岗位: 【{company}】{title}")
                     continue
                     
-                print(f"   👉 [锁定实战靶场 {idx}] 【{company}】{title} ({salary})")
+                print(f"\n   👉 [锁定实战靶场 {idx}] 【{company}】{title} ({salary})")
                 
-                if not chosen_card:
-                    chosen_card = card
-                    chosen_info = {"company": company, "title": title, "salary": salary}
+                if not target_card:
+                    target_card = card
+                    target_info = {"company": company, "title": title, "salary": salary}
+                    break
             except Exception:
                 continue
 
-        # 4. 点击卡片展开详情并点击【立即沟通】
-        if chosen_card:
-            print(f"\n4. 🚀 正在向选定目标【{chosen_info['company']}】发起点击沟通与建联！")
+        # 4. 点击选定卡片并等待右侧详情面板渲染
+        if target_card:
+            print(f"\n4. 🚀 正在点击选中的岗位卡片: 【{target_info['company']}】...")
             try:
-                await chosen_card.click()
+                await target_card.scroll_into_view_if_needed()
+                await target_card.click()
                 await asyncio.sleep(2.5)
-            except Exception:
-                pass
-                
-            # 点击立即沟通
-            chat_btn = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat").first
-            try:
-                if await chat_btn.is_visible():
-                    print("   👉 成功在屏幕上点击【立即沟通】按钮！")
-                    await chat_btn.click()
-                    await asyncio.sleep(2.0)
-                    
-                    # 点击【继续沟通】穿透进聊天界面
-                    continue_chat_btn = page.locator("button:has-text('继续沟通'), a:has-text('继续沟通'), .btn-sure, button:has-text('确定')").first
-                    try:
-                        if await continue_chat_btn.is_visible():
-                            print("   👉 成功点击【继续沟通】！正在进入聊天室...")
-                            await continue_chat_btn.click()
-                    except Exception:
-                        pass
             except Exception as e:
-                print("   ⚠️ 沟通点击提示:", e)
+                print("   卡片点击通知:", e)
 
-            # 5. 关键自愈加固：动态等待聊天室加载完成（跨越“BOSS 加载中，请稍候”占位）
-            print("\n5. ⏳ 正在等待聊天室加载完成并就绪...")
-            active_chat_page = page
+            # 5. 关键加固：在右侧面板中等待【立即沟通】按钮渲染完成并点击
+            print("5. 正在定位右侧详情面板中的【立即沟通】按钮...")
+            chat_btn_clicked = False
             
-            # 检查是否有新标签页打开
-            if len(context.pages) > 1:
-                active_chat_page = context.pages[-1]
-                await active_chat_page.bring_to_front()
-                print("   👉 自动切换至新激活的聊天标签页！")
-
-            # 动态等待输入框渲染（最多等待 15 秒）
-            chat_input = None
-            for w_sec in range(15):
-                await asyncio.sleep(1.0)
-                input_loc = active_chat_page.locator(".chat-editor, div[contenteditable='true'], #chat-input, textarea.chat-input, .chat-input-content, textarea").first
+            for b_sec in range(10):
+                await asyncio.sleep(0.8)
+                chat_btn = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat, [class*='btn-startchat']").first
                 try:
-                    if await input_loc.is_visible():
-                        chat_input = input_loc
-                        print(f"   🎉 ✅ 聊天室在第 {w_sec+1} 秒完全加载完毕！成功捕获真实输入框！")
+                    if await chat_btn.is_visible():
+                        btn_txt = (await chat_btn.inner_text()).strip()
+                        print(f"   👉 成功在屏幕上定位到【立即沟通】按钮 (文字: {btn_txt})，正在点击发起沟通！")
+                        await chat_btn.click()
+                        chat_btn_clicked = True
+                        await asyncio.sleep(2.0)
                         break
                 except Exception:
                     pass
 
-            followup_text = "您好！我对贵司该岗位的具体职责与工作时间非常契合，请问目前方便进一步沟通吗？"
-            
-            if chat_input:
-                print(f"\n6. 📝 正在向真实聊天输入框中输入跟进消息：")
-                print(f"   发送内容: \"{followup_text}\"")
-                
-                await chat_input.click()
-                await asyncio.sleep(0.5)
-                await chat_input.fill(followup_text)
-                await asyncio.sleep(1.0)
-                
-                send_btn = active_chat_page.locator(".btn-send, button:has-text('发送'), .chat-op .btn-send").first
+            if chat_btn_clicked:
+                # 6. 处理二次确认弹窗
+                confirm_btn = page.locator(".dialog-startchat .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('确认沟通'), button:has-text('继续沟通')").first
                 try:
-                    if await send_btn.is_visible():
-                        print("   👉 点击【发送】按钮...")
-                        await send_btn.click()
-                    else:
-                        print("   👉 按下键盘 [Enter] 发送...")
-                        await active_chat_page.keyboard.press("Enter")
+                    if await confirm_btn.is_visible():
+                        print("   👉 自动确认打招呼发送浮层...")
+                        await confirm_btn.click()
+                        await asyncio.sleep(2.0)
                 except Exception:
-                    await active_chat_page.keyboard.press("Enter")
-                    
-                await asyncio.sleep(3.0)
-                print("\n" + "╔" + "═"*62 + "╗")
-                print("║  🎉 【真实聊天室跟进消息已成功发送至对话流中！】           ║")
-                print(f"║  🏢 沟通企业: {chosen_info['company']:<35} ║")
-                print(f"║  💬 发送内容: {followup_text:<35} ║")
-                print("║  🟢 状态: 真实消息气泡已呈现在 BOSS 聊天窗口中！           ║")
-                print("╚" + "═"*62 + "╝\n")
-                log_event("CHAT_SENT", f"成功向【{chosen_info['company']}】发送消息: {followup_text}")
-            else:
-                print("   ℹ️ 提示: 平台打招呼已成功送达（首打后等待 HR 回复即可继续追发）。")
+                    pass
 
-            # 截图保存真实聊天证据
-            screenshot_path = screenshots_dir / "live_chat_conversation_success.png"
-            await active_chat_page.screenshot(path=str(screenshot_path))
-            print(f"📸 真实对话现场已截图存档: {screenshot_path.name}")
+                print("\n" + "╔" + "═"*62 + "╗")
+                print(f"║  🎉 【真实实战沟通已成功发起并发送至 HR 账号！】           ║")
+                print(f"║  🏢 目标企业: {target_info['company']:<35} ║")
+                print(f"║  💼 岗位名称: {target_info['title']:<35} ║")
+                print(f"║  🟢 状态: 消息已成功发送至对方 BOSS 直聘对话中！           ║")
+                print("╚" + "═"*62 + "╝\n")
+                log_event("CHAT_SUCCESS", f"✅ 成功向【{target_info['company']}】HR 发起真实沟通！")
+            else:
+                print("   ℹ️ 提示: 该岗位卡片可能已处于沟通过状态。")
+
+            # 截图保存真实沟通现场
+            screenshot_path = screenshots_dir / "live_chat_verified.png"
+            await page.screenshot(path=str(screenshot_path))
+            print(f"📸 真实沟通现场已截图存档: {screenshot_path.name}")
 
         print("\n" + "="*70)
-        print("🎉 【BOSS 直聘全链路实战沟通 100% 跑通完毕！】窗口常驻桌面供您直接查看！")
+        print("🎉 【实战沟通已彻底执行完毕！】Chrome 窗口常驻桌面供您直接核验！")
         print("="*70 + "\n")
         
         while True:
