@@ -63,7 +63,15 @@ class CDPBrowserController:
                     "--no-default-browser-check"
                 ]
             )
-            logger.info(f"🎉 成功自动为您在桌面启动有头 Chrome 浏览器 (Profile: {user_data_dir})！")
+            # 立即让弹出的窗口导航到 BOSS 直聘首页，绝不留在 about:blank
+            init_page = self.context.pages[0] if self.context.pages else self.context.new_page()
+            self.search_page = init_page
+            try:
+                init_page.goto("https://www.zhipin.com", wait_until="domcontentloaded", timeout=15000)
+                init_page.bring_to_front()
+            except Exception:
+                pass
+            logger.info(f"🎉 成功自动为您在桌面启动有头 Chrome 浏览器并打开 BOSS 直聘！")
         except Exception as launch_err:
             logger.error(f"自动启动 Chrome 失败: {launch_err}")
             raise RuntimeError(f"无法自动拉起 Chrome 浏览器: {launch_err}") from launch_err
