@@ -2,10 +2,11 @@
 Full Autonomous Self-Healing & Live Communication Runner for BOSS 直聘.
 Handles:
 1. Detects unauthenticated state -> Clicks [登录/注册] -> Pops up WeChat QR code modal -> Waits for user scan.
-2. Once logged in -> Navigates to geek job feed -> Waits for SPA render.
-3. Traverses cards -> Filters out Hunan/Huaihua -> Selects target card.
-4. Clicks card -> Clicks '立即沟通' -> Confirms modal -> Sends live message!
-5. Keeps window open forever on desktop.
+2. If redirected to /web/user/ at any point during search -> Immediately re-triggers QR login wait and resumes upon scan.
+3. Once logged in -> Navigates to geek job feed -> Waits for SPA render.
+4. Traverses cards -> Filters out Hunan/Huaihua -> Selects target card.
+5. Clicks card -> Clicks '立即沟通' -> Confirms modal -> Sends live message!
+6. Keeps window open forever on desktop.
 """
 import sys
 import os
@@ -42,30 +43,42 @@ async def ensure_logged_in_headful(context):
     if not page:
         page = await context.new_page()
         
-    print("1. 正在访问 BOSS 直聘主页检查登录状态...", flush=True)
+    print("1. 正在检查 BOSS 直聘当前登录凭证与会话状态...", flush=True)
     try:
-        await page.goto("https://www.zhipin.com", wait_until="domcontentloaded", timeout=25000)
+        cur_url = page.url
+        if "web/user" in cur_url or "login" in cur_url:
+            is_login_page = True
+        else:
+            is_login_page = False
     except Exception:
-        pass
+        is_login_page = False
         
-    await asyncio.sleep(2)
+    if not is_login_page:
+        try:
+            await page.goto("https://www.zhipin.com", wait_until="domcontentloaded", timeout=25000)
+            await asyncio.sleep(2)
+        except Exception:
+            pass
+            
     await page.bring_to_front()
     
     # 检查是否未登录
     login_btn = await page.query_selector("a:has-text('登录/注册'), a:has-text('登录'), .header-login")
     avatar = await page.query_selector(".nav-figure, .avatar, [class*='avatar'], .user-nav, .user-name")
     
-    if login_btn and not avatar:
+    if is_login_page or (login_btn and not avatar):
         print("\n" + "╔" + "═"*62 + "╗")
-        print("║  🔑 【检测到 BOSS 直聘当前处于未登录状态】                  ║")
-        print("║  👉 系统已为您自动弹出登录二维码，请在 Chrome 窗口微信扫码   ║")
-        print("║  ⏳ 正在全自动监听，您扫码成功后将立即自动开始选岗沟通！    ║")
+        print("║  🔑 【请在屏幕上的 Chrome 窗口中用【微信扫码】登录一次】      ║")
+        print("║  ⏳ 系统正在全自动监听，您扫码成功后将立即自动接管并沟通！  ║")
         print("╚" + "═"*62 + "╝\n", flush=True)
         
         try:
-            await login_btn.click()
+            if login_btn:
+                await login_btn.click()
         except Exception:
             pass
+            
+        await page.bring_to_front()
             
         # 轮询等待扫码完成
         for _ in range(180): # 最多等待 3 分钟
@@ -75,8 +88,8 @@ async def ensure_logged_in_headful(context):
                 continue
             try:
                 cur_avatar = await p_live.query_selector(".nav-figure, .avatar, [class*='avatar'], .user-nav, .user-name")
-                if cur_avatar or "geek" in p_live.url or "web/user" not in p_live.url and await p_live.query_selector("a:has-text('消息')"):
-                    print("🎉 ✅ 微信扫码登录成功！凭证已永久固化在浏览器中！\n", flush=True)
+                if cur_avatar or "geek" in p_live.url or ("web/user" not in p_live.url and await p_live.query_selector("a:has-text('消息')")):
+                    print("🎉 ✅ 微信扫码登录成功！登录凭证已永久固化在浏览器中！\n", flush=True)
                     await asyncio.sleep(2)
                     return p_live
             except Exception:
@@ -169,11 +182,23 @@ async def main():
         # 3. 等待数据渲染与注水（捕获所有跳转异常）
         print("\n3. 正在等待岗位数据流注水文字（跨越 SPA 加载）...", flush=True)
         cards = []
-        for sec in range(25):
+        for sec in range(30):
             await asyncio.sleep(1.0)
             page = get_live_page(context)
             if not page:
                 continue
+                
+            # 实时检测是否在搜索中被踢回登录页
+            try:
+                if "web/user" in page.url or "login" in page.url:
+                    print("\n🚨 [检测到需要扫码登录确认身份] 正在切换至登录模式...", flush=True)
+                    page = await ensure_logged_in_headful(context)
+                    print(f"👉 重新进入靶场: {target_url}", flush=True)
+                    await page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+                    await asyncio.sleep(3)
+                    continue
+            except Exception:
+                pass
                 
             await check_captcha_if_needed(page)
             
