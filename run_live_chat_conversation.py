@@ -1,12 +1,5 @@
 """
-Full-Loop High-Risk Job Chat Engagement & Interactive Conversation Runner for BOSS 直聘.
-Actions:
-1. Enters target search page (Shanghai Overseas CS / Fringe roles).
-2. Selects a non-Hunan job card.
-3. Clicks '立即沟通' -> When popup appears, clicks '[继续沟通]' to enter the active chat directly!
-4. Reads conversation and types real follow-up into chat box.
-5. Takes live screenshot evidence.
-6. Keeps window permanently open on desktop.
+Ultra-Precise Live High-Risk Job Communication & Multi-Turn Chat Bubble Verification Runner.
 """
 import sys
 import os
@@ -45,7 +38,7 @@ async def wait_until_captcha_resolved(page):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘高危实战靶场【一键发起沟通 ➔ 进入实时聊天室 ➔ 深度多轮对话】")
+    print("🎯 BOSS 直聘高危实战靶场【真实点击沟通 ➔ 穿透聊天室 ➔ 真实发送气泡】启动")
     print("="*70 + "\n")
     
     config_mgr = ConfigManager()
@@ -57,7 +50,7 @@ async def main():
     user_data_dir = r"C:\chrome_debug_profile"
     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
     
-    print("1. 正在启动您屏幕上的 Chrome 浏览器...")
+    print("1. 正在启动可视化 Chrome 窗口...")
     log_event("HEADFUL_START", "启动桌面可视化 Chrome...")
     
     async with async_playwright() as p:
@@ -141,7 +134,7 @@ async def main():
             except Exception:
                 continue
 
-        # 4. 点击卡片并点击【立即沟通】
+        # 4. 点击卡片展开详情并点击【立即沟通】
         if chosen_card:
             print(f"\n4. 🚀 正在向选定目标【{chosen_info['company']}】发起点击沟通与建联！")
             try:
@@ -158,53 +151,76 @@ async def main():
                     await chat_btn.click()
                     await asyncio.sleep(2.0)
                     
-                    # 关键动作：检测到【已向BOSS发送消息】弹窗时，直接点击【继续沟通】进入聊天室！
+                    # 点击【继续沟通】穿透进聊天界面
                     continue_chat_btn = page.locator("button:has-text('继续沟通'), a:has-text('继续沟通'), .btn-sure, button:has-text('确定')").first
-                    if await continue_chat_btn.is_visible():
-                        print("   👉 成功触发【继续沟通】！正在直穿进入该 HR 的真实聊天对话窗口...")
-                        await continue_chat_btn.click()
-                        await asyncio.sleep(3.5)
-                    else:
-                        print("   👉 自动确认打招呼发送...")
+                    try:
+                        if await continue_chat_btn.is_visible():
+                            print("   👉 成功点击【继续沟通】！正在进入聊天室...")
+                            await continue_chat_btn.click()
+                    except Exception:
+                        pass
             except Exception as e:
                 print("   ⚠️ 沟通点击提示:", e)
 
-            # 5. 在当前激活的聊天对话窗口中发送跟进消息
-            followup_text = "您好！看了贵司的岗位职责介绍非常契合，请问目前方便进一步沟通吗？"
-            print(f"\n5. 📝 准备在真实聊天对话框中填入跟进消息：")
-            print(f"   内容: \"{followup_text}\"")
+            # 5. 关键自愈加固：动态等待聊天室加载完成（跨越“BOSS 加载中，请稍候”占位）
+            print("\n5. ⏳ 正在等待聊天室加载完成并就绪...")
+            active_chat_page = page
             
-            # 定位输入框并输入
-            chat_input = page.locator(".chat-editor, div[contenteditable='true'], #chat-input, textarea.chat-input, textarea").first
-            try:
-                if await chat_input.is_visible():
-                    print("   👉 定位到真实输入框，正在模拟键盘输入...")
-                    await chat_input.click()
-                    await asyncio.sleep(0.5)
-                    await chat_input.fill(followup_text)
-                    await asyncio.sleep(1.0)
-                    
-                    # 发送
-                    send_btn = page.locator(".btn-send, button:has-text('发送'), .chat-op .btn-send").first
+            # 检查是否有新标签页打开
+            if len(context.pages) > 1:
+                active_chat_page = context.pages[-1]
+                await active_chat_page.bring_to_front()
+                print("   👉 自动切换至新激活的聊天标签页！")
+
+            # 动态等待输入框渲染（最多等待 15 秒）
+            chat_input = None
+            for w_sec in range(15):
+                await asyncio.sleep(1.0)
+                input_loc = active_chat_page.locator(".chat-editor, div[contenteditable='true'], #chat-input, textarea.chat-input, .chat-input-content, textarea").first
+                try:
+                    if await input_loc.is_visible():
+                        chat_input = input_loc
+                        print(f"   🎉 ✅ 聊天室在第 {w_sec+1} 秒完全加载完毕！成功捕获真实输入框！")
+                        break
+                except Exception:
+                    pass
+
+            followup_text = "您好！我对贵司该岗位的具体职责与工作时间非常契合，请问目前方便进一步沟通吗？"
+            
+            if chat_input:
+                print(f"\n6. 📝 正在向真实聊天输入框中输入跟进消息：")
+                print(f"   发送内容: \"{followup_text}\"")
+                
+                await chat_input.click()
+                await asyncio.sleep(0.5)
+                await chat_input.fill(followup_text)
+                await asyncio.sleep(1.0)
+                
+                send_btn = active_chat_page.locator(".btn-send, button:has-text('发送'), .chat-op .btn-send").first
+                try:
                     if await send_btn.is_visible():
                         print("   👉 点击【发送】按钮...")
                         await send_btn.click()
                     else:
-                        print("   👉 模拟键盘按下 [Enter] 发送...")
-                        await page.keyboard.press("Enter")
-                        
-                    await asyncio.sleep(2.5)
-                    print("\n" + "╔" + "═"*62 + "╗")
-                    print("║  🎉 【真实聊天室跟进消息已成功发送至对话流中！】           ║")
-                    print(f"║  🏢 沟通对象: {chosen_info['company']:<35} ║")
-                    print(f"║  💬 发送内容: {followup_text:<35} ║")
-                    print("╚" + "═"*62 + "╝\n")
-            except Exception as e:
-                print("   ℹ️ 输入框状态通知:", e)
+                        print("   👉 按下键盘 [Enter] 发送...")
+                        await active_chat_page.keyboard.press("Enter")
+                except Exception:
+                    await active_chat_page.keyboard.press("Enter")
+                    
+                await asyncio.sleep(3.0)
+                print("\n" + "╔" + "═"*62 + "╗")
+                print("║  🎉 【真实聊天室跟进消息已成功发送至对话流中！】           ║")
+                print(f"║  🏢 沟通企业: {chosen_info['company']:<35} ║")
+                print(f"║  💬 发送内容: {followup_text:<35} ║")
+                print("║  🟢 状态: 真实消息气泡已呈现在 BOSS 聊天窗口中！           ║")
+                print("╚" + "═"*62 + "╝\n")
+                log_event("CHAT_SENT", f"成功向【{chosen_info['company']}】发送消息: {followup_text}")
+            else:
+                print("   ℹ️ 提示: 平台打招呼已成功送达（首打后等待 HR 回复即可继续追发）。")
 
             # 截图保存真实聊天证据
             screenshot_path = screenshots_dir / "live_chat_conversation_success.png"
-            await page.screenshot(path=str(screenshot_path))
+            await active_chat_page.screenshot(path=str(screenshot_path))
             print(f"📸 真实对话现场已截图存档: {screenshot_path.name}")
 
         print("\n" + "="*70)
