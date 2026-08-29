@@ -1,11 +1,12 @@
 """
-Pure Recommend Stream Runner (Zero Search / No Query) for BOSS 直聘.
-Features:
-1. 100% removes all search keywords and search input triggers.
-2. Directly loads BOSS 直聘 candidate recommendation stream (https://www.zhipin.com/web/geek/job-recommend).
-3. Evaluates recommended cards locally via safety rules (strictly excludes Hunan & Huaihua).
-4. Selects a non-Hunan job from the feed, clicks card, clicks '立即沟通', and confirms modal!
-5. Permanently keeps the Chrome window open on desktop.
+Pure Recommend Stream Runner with Target City Switching (Zero Search / No Query).
+Flow:
+1. Loads BOSS 直聘 pure recommend stream for external test city (e.g. Shanghai 101020100).
+2. Reads high-quality recommended postings (IT Support, Operations Assistant, Data, Admin).
+3. Applies scoring engine & strictly excludes Hunan/Huaihua.
+4. Clicks the first non-Hunan candidate card on screen.
+5. Clicks '立即沟通' -> Confirms modal -> Sends message!
+6. Permanently keeps the Chrome window open on desktop.
 """
 import sys
 import os
@@ -103,7 +104,7 @@ async def check_captcha_if_needed(page):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘【纯推荐流模式·取消任何搜索】真实选岗与沟通启动")
+    print("🎯 BOSS 直聘【精选推荐流·城市定向筛选】真实选岗与沟通启动")
     print("="*70 + "\n")
     
     config_mgr = ConfigManager()
@@ -148,9 +149,9 @@ async def main():
         page = await ensure_logged_in(context)
         await page.bring_to_front()
         
-        # 2. 直接进入 BOSS 直聘官方推荐流页面（完全不使用任何搜索关键词）
-        recommend_url = "https://www.zhipin.com/web/geek/job-recommend"
-        print(f"\n2. 正在加载 BOSS 直聘官方【精选推荐流】(无搜索纯筛选): {recommend_url} ...")
+        # 2. 切换至非湖南外地实战测试城市推荐流 (上海: 101020100)
+        recommend_url = "https://www.zhipin.com/web/geek/job-recommend?city=101020100"
+        print(f"\n2. 正在加载实战测试区【上海·官方精选推荐流】: {recommend_url} ...")
         
         try:
             await page.goto(recommend_url, wait_until="domcontentloaded", timeout=30000)
@@ -192,7 +193,7 @@ async def main():
                     pass
                     
             if cards:
-                print(f"   🎉 ✅ 成功在推荐流中捕获到 {len(cards)} 个真实推荐岗位！")
+                print(f"   🎉 ✅ 成功在推荐流中捕获到 {len(cards)} 个推荐岗位！")
                 break
                 
         if not cards:
@@ -200,7 +201,7 @@ async def main():
             if page:
                 cards = await page.query_selector_all("ul > li, div.card, a[href*='job_detail']")
 
-        print(f"\n📊 开始在推荐流中筛选岗位（严格排除湖南省全境与怀化）：")
+        print(f"\n📊 正在执行安全防火墙与多维岗位筛选（排除全部湖南/怀化本地）：")
         
         chosen_target = None
         
@@ -214,7 +215,7 @@ async def main():
                 title = lines[0] if len(lines) > 0 else "未知岗位"
                 salary = "面议"
                 company = "企业"
-                area = "异地"
+                area = "上海"
                 
                 for line in lines:
                     if any(k in line for k in ["K", "k", "薪", "元/月", "元/天", "·"]):
@@ -230,7 +231,7 @@ async def main():
                     
                 # 严格限制：跳过湖南省全境与怀化
                 if any(loc in (raw_text + area) for loc in ["湖南", "怀化", "洪江", "长沙", "株洲", "湘潭", "岳阳"]):
-                    print(f"   [目标 {idx}] ⏭️ 跳过湖南本地推荐岗位: 【{company}】{title}")
+                    print(f"   [目标 {idx}] ⏭️ 跳过湖南本地岗位: 【{company}】{title}")
                     continue
                     
                 print(f"\n   👉 [锁定非湖南推荐目标 {idx}] 【{company}】{title} ({salary}) | 城市: {area}")
@@ -250,7 +251,7 @@ async def main():
                 else:
                     eval_res = scoring_engine.evaluate_job_with_llm(raw_job)
                     print(f"      📊 [综合评分]: {eval_res.score}分 (通过: {eval_res.passed})")
-                    print(f"      💬 [自动生成试探语]: \"{eval_res.custom_greeting or '您好，关注到贵司该岗位，请问该岗位国内有实体办公地点吗？'}\"")
+                    print(f"      💬 [自动生成试探语]: \"{eval_res.custom_greeting or '您好，关注到贵司该岗位，请问该岗位目前还在招聘吗？'}\"")
                 
                 if not chosen_target:
                     chosen_target = {
