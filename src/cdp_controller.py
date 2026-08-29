@@ -116,11 +116,29 @@ class CDPBrowserController:
                 self.human_delay(0.2, 0.4)
 
     def check_and_handle_captcha(self, page: Page) -> bool:
-        """检测滑块验证码并触发熔断"""
+        """检测滑块/九宫格点选验证码并触发告警与前台等待"""
+        # 1. 检测是否被重定向到验证码页面
+        if "verify.html" in page.url or "security.html" in page.url:
+            logger.warning("🚨 [触发风控拦截] 检测到 BOSS 直聘九宫格/滑块安全验证码！")
+            self.notifier.send_captcha_alert()
+            logger.info("👉 请在前台弹出的 Chrome 窗口中点击完成图形验证码，系统将自动检测通过并继续！")
+            
+            for _ in range(120):
+                if self.stop_event and self.stop_event.is_set():
+                    break
+                if "verify.html" not in page.url and "security.html" not in page.url:
+                    logger.info("🎉 ✅ 安全验证已通过！继续执行岗位筛选与沟通！")
+                    return True
+                self.human_delay(1.0, 1.0)
+            return True
+
+        # 2. 检测页面内嵌入式验证码浮层
         captcha_selectors = [
             ".geetest_radar_tip",
             ".geetest_slider",
             ".verify-slider",
+            ".geetest_popup_wrap",
+            ".geetest_wrap",
             "[class*='captcha']",
             "[class*='dialog-captcha']"
         ]
@@ -128,14 +146,13 @@ class CDPBrowserController:
             try:
                 elem = page.query_selector(sel)
                 if elem and elem.is_visible():
-                    logger.warning("🚨 检测到滑块验证码弹窗！触发熔断保护！")
+                    logger.warning("🚨 检测到滑块/点选验证码弹窗！请在 Chrome 窗口中完成验证...")
                     self.notifier.send_captcha_alert()
-                    # 轮询等待用户手动完成滑动，避免阻塞后台线程
-                    for _ in range(60):
+                    for _ in range(90):
                         if self.stop_event and self.stop_event.is_set():
                             break
                         if not elem.is_visible():
-                            logger.info("✅ 验证码已解除，继续执行！")
+                            logger.info("🎉 ✅ 验证码弹窗已解除，继续执行！")
                             break
                         self.human_delay(1.0, 1.0)
                     return True
