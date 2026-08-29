@@ -61,6 +61,14 @@ async def main():
         except Exception as e:
             print(f"   页面跳转通知: {e}")
             
+        # 自愈机制：如果依然停留在 about:blank，立即重新执行导航
+        if page.url == "about:blank":
+            print("   👉 检测到空白页，正在重新连接 BOSS 直聘目标靶场...")
+            try:
+                await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+            except Exception:
+                pass
+            
         print("\n⏳ 正在监听页面渲染与安全验证状态（如有验证码请在窗口中点击完成）...")
         
         # 动态等待：直到页面出现 job 卡片，或者用户完成验证码
