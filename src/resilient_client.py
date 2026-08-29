@@ -10,7 +10,16 @@ import os
 import time
 import logging
 from typing import List, Dict, Any, Optional, Tuple
+from pathlib import Path
 from openai import OpenAI
+
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+except ImportError:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +39,26 @@ class ResilientAPIClient:
         self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        primary_model: str = "deepseek-chat",
+        primary_model: Optional[str] = None,
         fallback_models: Optional[List[str]] = None,
         max_history_turns: int = 6,
         timeout_seconds: float = 8.0
     ):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or "sk-free-gateway-key"
-        self.base_url = base_url or os.getenv("OPENAI_BASE_URL") or "http://127.0.0.1:3000/v1"
-        self.primary_model = primary_model
-        self.fallback_models = fallback_models or self.DEFAULT_FALLBACK_MODELS
+        self.base_url = base_url or os.getenv("OPENAI_BASE_URL") or "https://api.deepseek.com/v1"
+        self.primary_model = primary_model or os.getenv("PRIMARY_MODEL") or "deepseek-chat"
+        
+        env_fallbacks = os.getenv("FALLBACK_MODELS")
+        if env_fallbacks and not fallback_models:
+            self.fallback_models = [m.strip() for m in env_fallbacks.split(",") if m.strip()]
+        else:
+            self.fallback_models = fallback_models or self.DEFAULT_FALLBACK_MODELS
+            
         if self.primary_model not in self.fallback_models:
             self.fallback_models = [self.primary_model] + self.fallback_models
             
         self.max_history_turns = max_history_turns
-        self.timeout_seconds = timeout_seconds
+        self.timeout_seconds = float(os.getenv("TIMEOUT_SECONDS", str(timeout_seconds)))
 
         # 统计指标
         self.stats = {
