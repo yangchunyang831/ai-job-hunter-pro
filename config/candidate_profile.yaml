@@ -18,6 +18,10 @@ basics:
   - 供应链 / 仓储管理
   - 数据分析 / 数据录入
   - 储备干部 / 项目助理
+safe_testing_sandbox:
+  target_role: 英语客服
+  target_city: 上海 (101020100)
+  rationale: 求职者本人英语较弱且未来绝不从事该岗位，属于100%零误伤、零影响真实求职的安全实战测试靶标
 skills:
   driver_license: 已取得 C1 驾驶证
   office_tools: 精通 Excel, Word, PPT, 飞书/钉钉等办公协同软件

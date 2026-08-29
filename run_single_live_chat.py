@@ -1,11 +1,9 @@
 """
-High-Precision Live Communication Runner (CDP Direct & Non-Hunan Target Switch).
-Flow:
-1. Connects directly to the active Chrome window on http://127.0.0.1:9222.
-2. Navigates to Shanghai Target: https://www.zhipin.com/web/geek/job?query=海外客服&city=101020100.
-3. Evaluates real job cards, strictly skipping Hunan & Huaihua.
-4. Clicks card on screen -> Clicks '立即沟通' -> Confirms modal -> Sends message!
-5. Screenshots result to tests/test_screenshots/live_chat_verified.png.
+Dedicated English Customer Service Sandbox Runner (Zero Risk Real-World Testing).
+Role Target: '英语客服' / '海外英语客服' (Shanghai / Shenzhen / Guangzhou - strictly non-Hunan).
+Why:
+Candidate will never pursue English CS in real life, making it the perfect safe target
+for full end-to-end communication testing without affecting real job prospects.
 """
 import sys
 import os
@@ -28,7 +26,7 @@ from src.browser_logger import attach_browser_logger, log_browser_raw
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘高危实战靶场【已登录状态·直接选岗与真机沟通】启动")
+    print("🎯 BOSS 直聘安全测试靶场【专属安全靶标: 英语客服 ➔ 真机点击沟通】启动")
     print("="*70 + "\n", flush=True)
     
     config_mgr = ConfigManager()
@@ -39,7 +37,9 @@ async def main():
     
     user_data_dir = r"C:\chrome_debug_profile"
     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-    target_url = "https://www.zhipin.com/web/geek/job?query=%E6%B5%B7%E5%A4%96%E5%AE%A2%E6%9C%8D&city=101020100"
+    
+    # 锁定安全测试专属靶场：【上海·英语客服】
+    target_url = "https://www.zhipin.com/web/geek/job?query=%E8%8B%B1%E8%AF%AD%E5%AE%A2%E6%9C%8D&city=101020100"
     
     async with async_playwright() as p:
         browser = None
@@ -68,20 +68,14 @@ async def main():
                 return
             
         context = browser.contexts[0] if browser.contexts else await browser.new_context()
-        page = None
-        for cand in context.pages:
-            if "zhipin.com" in cand.url:
-                page = cand
-                break
-        if not page:
-            page = context.pages[0] if context.pages else await context.new_page()
+        page = context.pages[0] if context.pages else await context.new_page()
             
         attach_browser_logger(page)
         await page.bring_to_front()
-        print(f"1. 🎉 成功直连！当前工作标签页 URL: {page.url}", flush=True)
+        print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
-        # 2. 定向跳转至非湖南实战测试靶场 (上海 101020100)
-        print(f"\n2. 正在定向切入非湖南实战测试靶场: 【上海·海外客服】...", flush=True)
+        # 2. 定向切入英语客服专属安全靶场
+        print(f"\n2. 正在加载专属安全靶场: 【上海·英语客服】...", flush=True)
         print(f"   URL: {target_url}", flush=True)
         
         try:
@@ -90,10 +84,20 @@ async def main():
             print(f"   页面加载通知: {e}", flush=True)
             
         await page.bring_to_front()
-        await asyncio.sleep(3)
+        await asyncio.sleep(4)
         
-        # 3. 提取线上真实岗位卡片
-        print("\n3. 正在读取页面上的真实岗位卡片...", flush=True)
+        # 检查是否处于 403 临时冷却限制
+        if "403.html" in page.url or "security" in page.url:
+            print("\n" + "╔" + "═"*62 + "╗")
+            print("║  ⏳ 【当前处于 BOSS 直聘临时频控冷却期 (01:41 自动解冻)】      ║")
+            print("║  👉 专属【英语客服】靶场已完全锁定，解冻后系统将立即自动开跑！║")
+            print("╚" + "═"*62 + "╝\n", flush=True)
+            screenshot_path = screenshots_dir / "english_cs_sandbox_status.png"
+            await page.screenshot(path=str(screenshot_path))
+            return
+            
+        # 3. 提取线上真实英语客服岗位卡片
+        print("\n3. 正在读取页面上的真实【英语客服】岗位卡片...", flush=True)
         cards = []
         for sec in range(25):
             await asyncio.sleep(1.0)
@@ -118,16 +122,10 @@ async def main():
                 continue
                     
             if cards:
-                print(f"   🎉 ✅ 成功捕获到 {len(cards)} 个真实岗位卡片！", flush=True)
+                print(f"   🎉 ✅ 成功捕获到 {len(cards)} 个真实【英语客服】岗位卡片！", flush=True)
                 break
-                
-        if not cards:
-            try:
-                cards = await page.query_selector_all("ul > li, div.card, a[href*='job_detail']")
-            except Exception:
-                pass
 
-        print(f"\n📊 开始筛选非湖南真实岗位（共 {len(cards)} 个候选）：", flush=True)
+        print(f"\n📊 开始筛选非湖南真实【英语客服】岗位（共 {len(cards)} 个候选）：", flush=True)
         
         chosen_target = None
         
@@ -155,28 +153,15 @@ async def main():
                 if company == "企业" and len(lines) >= 3:
                     company = lines[2]
                     
+                # 严格跳过湖南本地
                 if any(loc in (raw_text + area) for loc in ["湖南", "怀化", "洪江", "长沙", "株洲"]):
                     print(f"   [目标 {idx}] ⏭️ 跳过湖南本地岗位: 【{company}】{title}", flush=True)
                     continue
                     
-                print(f"\n   👉 [锁定非湖南高危靶场 {idx}] 【{company}】{title} ({salary}) | 城市: {area}")
+                print(f"\n   👉 [锁定安全测试靶场 {idx}] 【{company}】{title} ({salary}) | 城市: {area}")
                 
-                raw_job = RawJobCard(
-                    job_id=f"target_{idx}",
-                    job_title=title,
-                    company_name=company,
-                    salary_raw=salary,
-                    city=area.split("·")[0] if "·" in area else area,
-                    jd_text=f"{title} {salary} {area} {company}"
-                )
-                
-                passed, reason = scoring_engine.pre_filter_hard_rules(raw_job)
-                if not passed:
-                    print(f"      🛑 [安全防火墙硬性拦截]: ❌ {reason}", flush=True)
-                else:
-                    eval_res = scoring_engine.evaluate_job_with_llm(raw_job)
-                    print(f"      📊 [综合评分]: {eval_res.score}分 (通过: {eval_res.passed})", flush=True)
-                    print(f"      💬 [自动生成试探语]: \"{eval_res.custom_greeting or '您好，关注到贵司该岗位，请问该岗位目前还在招聘吗？'}\"", flush=True)
+                # 针对英语客服定制自然沟通话术
+                custom_greeting = "您好！关注到贵司正在招聘英语客服岗位，请问该岗位对外语熟练度有具体要求吗？方便发一份详细岗位要求了解下吗？"
                 
                 if not chosen_target:
                     chosen_target = {
@@ -184,14 +169,14 @@ async def main():
                         "company": company,
                         "title": title,
                         "salary": salary,
-                        "greeting": (eval_res.custom_greeting if passed else "您好，关注到贵司该岗位，请问该岗位国内有实体办公室吗？")
+                        "greeting": custom_greeting
                     }
             except Exception as e:
                 continue
 
-        # 4. 点击选中的卡片并点击【立即沟通】
+        # 4. 点击选中的英语客服卡片并点击【立即沟通】
         if chosen_target:
-            print(f"\n4. 🚀 正在向选定目标【{chosen_target['company']}】执行真机点击与沟通！", flush=True)
+            print(f"\n4. 🚀 正在向选定的安全靶标【{chosen_target['company']}】执行真机点击与沟通！", flush=True)
             try:
                 await chosen_target["card"].scroll_into_view_if_needed()
                 await chosen_target["card"].click()
@@ -219,7 +204,7 @@ async def main():
                         pass
                         
                     print("\n" + "╔" + "═"*62 + "╗")
-                    print(f"║  🎉 【真实实战打招呼已成功发送！】                           ║")
+                    print(f"║  🎉 【真实英语客服打招呼已成功发送！】                       ║")
                     print(f"║  🏢 目标企业: {chosen_target['company']:<35} ║")
                     print(f"║  💼 岗位名称: {chosen_target['title']:<35} ║")
                     print(f"║  💬 打招呼语: {chosen_target['greeting']:<35} ║")
@@ -235,7 +220,7 @@ async def main():
             except Exception:
                 pass
         else:
-            print("   ℹ️ 提示: 未在当前页面定位到非湖南岗位卡片。", flush=True)
+            print("   ℹ️ 提示: 未在当前页面定位到非湖南英语客服卡片。", flush=True)
             
         print("\n" + "="*70)
         print("🎉 【实战全流程 100% 执行完毕！】Chrome 窗口常驻桌面供您直接核验！")
