@@ -8,6 +8,7 @@ from typing import Optional, List, Dict, Any, Generator
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
 from src.schemas import RawJobCard
 from src.notifier import NotificationManager
+from src.browser_logger import attach_browser_logger
 
 logger = logging.getLogger(__name__)
 

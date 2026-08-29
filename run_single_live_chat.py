@@ -22,6 +22,7 @@ from src.config_loader import ConfigManager
 from src.scoring_engine import ScoringEngine
 from src.schemas import RawJobCard
 from src.battle_logger import log_event
+from src.browser_logger import attach_browser_logger, log_browser_raw
 
 
 def get_live_page(context):
@@ -144,6 +145,8 @@ async def main():
             except Exception:
                 pass
                     
+        # 挂载 Chrome 全量控制台与网络日志监听器
+        attach_browser_logger(page)
         await page.bring_to_front()
         
         # 1. 确保扫码登录
