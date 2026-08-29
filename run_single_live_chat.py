@@ -1,14 +1,11 @@
 """
-Guaranteed Login & Live HR Communication Runner for BOSS 直聘.
-Step-by-step:
-1. Opens visible Chrome at BOSS homepage (https://www.zhipin.com).
-2. Checks if logged in:
-   - If NOT logged in: Pops up QR login modal, waits for user to scan once.
-   - If logged in: Seamlessly proceeds.
-3. Navigates to live target search (Shanghai Overseas CS / Non-Hunan).
-4. Extracts real job cards, skipping skeleton placeholders.
-5. Clicks target card on screen, clicks '立即沟通', confirms modal, sends message!
-6. Permanently keeps the Chrome window open on desktop.
+Pure Recommend Stream Runner (Zero Search / No Query) for BOSS 直聘.
+Features:
+1. 100% removes all search keywords and search input triggers.
+2. Directly loads BOSS 直聘 candidate recommendation stream (https://www.zhipin.com/web/geek/job-recommend).
+3. Evaluates recommended cards locally via safety rules (strictly excludes Hunan & Huaihua).
+4. Selects a non-Hunan job from the feed, clicks card, clicks '立即沟通', and confirms modal!
+5. Permanently keeps the Chrome window open on desktop.
 """
 import sys
 import os
@@ -39,7 +36,7 @@ def get_live_page(context):
 
 
 async def ensure_logged_in(context):
-    """确保 BOSS 直聘处于登录状态，未登录则引导扫码"""
+    """确保处于登录状态，未登录则引导微信扫码"""
     page = get_live_page(context)
     if not page:
         page = await context.new_page()
@@ -53,7 +50,6 @@ async def ensure_logged_in(context):
     await asyncio.sleep(2)
     await page.bring_to_front()
     
-    # 检查是否已登录（检测右上角头像或用户名）
     avatar_elem = await page.query_selector(".nav-figure, .header-login .avatar, [class*='avatar'], .user-nav, .user-name")
     login_btn = await page.query_selector(".btn-sign-switch, a:has-text('登录/注册'), a:has-text('登录'), .header-login")
     
@@ -65,26 +61,23 @@ async def ensure_logged_in(context):
         print("╚" + "═"*62 + "╝\n")
         
         try:
-            # 自动点击登录按钮弹出二维码
             await login_btn.click()
         except Exception:
             pass
             
-        # 循环等待用户扫码成功
-        for _ in range(180): # 最多等待 3 分钟
+        for _ in range(180):
             await asyncio.sleep(2.0)
             p_live = get_live_page(context)
             if not p_live:
                 continue
             try:
-                cur_avatar = await p_live.query_selector(".nav-figure, .avatar, [class*='avatar'], .user-nav, .user-name, [class*='user-info']")
+                cur_avatar = await p_live.query_selector(".nav-figure, .avatar, [class*='avatar'], .user-nav, .user-name")
                 if cur_avatar or "geek" in p_live.url or "web/user" not in p_live.url and await p_live.query_selector("a:has-text('消息')"):
-                    print("🎉 ✅ 恭喜！微信扫码登录成功！登录凭证已永久保存！\n")
+                    print("🎉 ✅ 微信扫码登录成功！凭证已永久保存！\n")
                     await asyncio.sleep(2)
                     return p_live
             except Exception:
                 pass
-                
     else:
         print("✅ 登录凭证有效，已处于已登录状态！")
         
@@ -110,7 +103,7 @@ async def check_captcha_if_needed(page):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘高危实战靶场【登录凭证确权 ➔ 真实选岗 ➔ 真机点击沟通】启动")
+    print("🎯 BOSS 直聘【纯推荐流模式·取消任何搜索】真实选岗与沟通启动")
     print("="*70 + "\n")
     
     config_mgr = ConfigManager()
@@ -151,28 +144,24 @@ async def main():
                     
         await page.bring_to_front()
         
-        # 1. 确保已登录（未登录则在主页扫码）
+        # 1. 确保已登录
         page = await ensure_logged_in(context)
         await page.bring_to_front()
         
-        # 2. 打开非湖南高危实战搜索页
-        search_kw = "海外客服"
-        city_code = "101020100" # 上海
-        target_url = f"https://www.zhipin.com/web/geek/job?query={search_kw}&city={city_code}"
-        
-        print(f"\n2. 正在加载实战目标靶场: 【上海·{search_kw}】...")
-        print(f"   URL: {target_url}")
+        # 2. 直接进入 BOSS 直聘官方推荐流页面（完全不使用任何搜索关键词）
+        recommend_url = "https://www.zhipin.com/web/geek/job-recommend"
+        print(f"\n2. 正在加载 BOSS 直聘官方【精选推荐流】(无搜索纯筛选): {recommend_url} ...")
         
         try:
-            await page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+            await page.goto(recommend_url, wait_until="domcontentloaded", timeout=30000)
         except Exception as e:
-            print(f"   页面加载通知: {e}")
+            print(f"   推荐页加载通知: {e}")
             
         await page.bring_to_front()
         await check_captcha_if_needed(page)
         
-        # 3. 等待岗位卡片数据流注水
-        print("\n3. 正在等待岗位数据流渲染并注水文字...")
+        # 3. 从推荐流中提取岗位卡片
+        print("\n3. 正在读取推荐流中展示的真实岗位卡片...")
         cards = []
         for sec in range(25):
             await asyncio.sleep(1.0)
@@ -183,14 +172,14 @@ async def main():
                 
             await check_captcha_if_needed(page)
                 
-            # 滚轮激活
+            # 鼠标轻微滚动以触发推荐流加载
             if sec % 2 == 0:
                 try:
                     await page.mouse.wheel(0, 300)
                 except Exception:
                     pass
 
-            # 抓取真实卡片
+            # 抓取卡片
             for sel in [".job-card-wrapper", ".job-card-box", "li.job-card", ".job-list-box li", ".job-card-left", ".job-primary", "[class*='job-card']"]:
                 try:
                     elems = await page.query_selector_all(sel)
@@ -203,20 +192,19 @@ async def main():
                     pass
                     
             if cards:
-                print(f"   🎉 ✅ 成功在第 {sec+1} 秒捕获到 {len(cards)} 个已填充数据的真实岗位卡片！")
+                print(f"   🎉 ✅ 成功在推荐流中捕获到 {len(cards)} 个真实推荐岗位！")
                 break
                 
         if not cards:
             page = get_live_page(context)
             if page:
-                print("   ⚠️ 正在从页面全局节点抓取卡片...")
                 cards = await page.query_selector_all("ul > li, div.card, a[href*='job_detail']")
 
-        print(f"\n📊 开始筛选非湖南真实岗位（共 {len(cards)} 个候选）：")
+        print(f"\n📊 开始在推荐流中筛选岗位（严格排除湖南省全境与怀化）：")
         
         chosen_target = None
         
-        for idx, card in enumerate(cards[:10], 1):
+        for idx, card in enumerate(cards[:15], 1):
             try:
                 raw_text = (await card.inner_text()).strip()
                 if len(raw_text) < 10:
@@ -226,7 +214,7 @@ async def main():
                 title = lines[0] if len(lines) > 0 else "未知岗位"
                 salary = "面议"
                 company = "企业"
-                area = "上海"
+                area = "异地"
                 
                 for line in lines:
                     if any(k in line for k in ["K", "k", "薪", "元/月", "元/天", "·"]):
@@ -240,14 +228,15 @@ async def main():
                 if company == "企业" and len(lines) >= 3:
                     company = lines[2]
                     
-                if any(loc in (raw_text + area) for loc in ["湖南", "怀化", "洪江", "长沙", "株洲"]):
-                    print(f"   [目标 {idx}] ⏭️ 跳过湖南本地岗位: 【{company}】{title}")
+                # 严格限制：跳过湖南省全境与怀化
+                if any(loc in (raw_text + area) for loc in ["湖南", "怀化", "洪江", "长沙", "株洲", "湘潭", "岳阳"]):
+                    print(f"   [目标 {idx}] ⏭️ 跳过湖南本地推荐岗位: 【{company}】{title}")
                     continue
                     
-                print(f"\n   👉 [锁定非湖南高危靶场 {idx}] 【{company}】{title} ({salary}) | 城市: {area}")
+                print(f"\n   👉 [锁定非湖南推荐目标 {idx}] 【{company}】{title} ({salary}) | 城市: {area}")
                 
                 raw_job = RawJobCard(
-                    job_id=f"target_{idx}",
+                    job_id=f"rec_{idx}",
                     job_title=title,
                     company_name=company,
                     salary_raw=salary,
@@ -269,14 +258,14 @@ async def main():
                         "company": company,
                         "title": title,
                         "salary": salary,
-                        "greeting": (eval_res.custom_greeting if passed else "您好，关注到贵司该岗位，请问该岗位国内有实体办公室吗？")
+                        "greeting": (eval_res.custom_greeting if passed else "您好，关注到贵司该岗位，请问该岗位目前还在招聘吗？")
                     }
             except Exception as e:
                 continue
 
-        # 4. 点击卡片展开详情并点击【立即沟通】
+        # 4. 点击选中的推荐卡片并点击【立即沟通】
         if chosen_target:
-            print(f"\n4. 🚀 正在向选定目标【{chosen_target['company']}】执行真机点击与沟通！")
+            print(f"\n4. 🚀 正在向选定的推荐目标【{chosen_target['company']}】执行真机点击与沟通！")
             page = get_live_page(context)
             if page:
                 try:
@@ -306,7 +295,7 @@ async def main():
                             pass
                             
                         print("\n" + "╔" + "═"*62 + "╗")
-                        print(f"║  🎉 【真实实战打招呼已成功发送！】                           ║")
+                        print(f"║  🎉 【真实推荐岗位打招呼已成功发送！】                       ║")
                         print(f"║  🏢 目标企业: {chosen_target['company']:<35} ║")
                         print(f"║  💼 岗位名称: {chosen_target['title']:<35} ║")
                         print(f"║  💬 打招呼语: {chosen_target['greeting']:<35} ║")
@@ -323,7 +312,7 @@ async def main():
                     pass
             
         print("\n" + "="*70)
-        print("🎉 【实战全流程 100% 执行完毕！】Chrome 窗口常驻桌面供您直接核验！")
+        print("🎉 【推荐流实战沟通 100% 执行完毕！】Chrome 窗口常驻桌面供您直接核验！")
         print("="*70 + "\n")
         
         while True:
