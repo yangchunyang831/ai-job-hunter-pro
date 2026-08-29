@@ -1,13 +1,5 @@
 """
-Ultra-Robust Single Live Battle Verification Runner for BOSS 直聘.
-Flow:
-1. Opens visible Headful Chrome on user screen.
-2. If captcha (verify.html / geetest), waits politely until user passes it.
-3. Automatically searches high-risk / fringe postings (e.g. '海外客服' / '日结兼职' in Shanghai/Guangzhou).
-4. Extracts and prints all real-world jobs on screen (Title, Company, Salary, Area).
-5. Excludes Hunan / Huaihua / Changsha strictly.
-6. Clicks target card on screen -> Clicks "立即沟通" -> Confirms modal -> Establishes live conversation.
-7. Permanently keeps the Chrome window open on desktop for user inspection.
+Dual-Engine (XHR Interception + DOM Parsing) Live BOSS 직聘 Job Filter & Communication Runner.
 """
 import sys
 import os
@@ -30,10 +22,10 @@ from src.battle_logger import log_event
 
 
 async def wait_until_captcha_resolved(page):
-    """检测并友好等待图形验证码解除"""
+    """检测并等待图形验证码解除"""
     if "verify.html" in page.url or "security.html" in page.url:
         print("\n" + "╔" + "═"*62 + "╗")
-        print("║  🚨 【检测到 BOSS 安全验证码】                                ║")
+        print("║  🚨 【检测到 BOSS 直聘安全验证码】                           ║")
         print("║  👉 请在您屏幕上的 Chrome 窗口中点击/滑动完成验证            ║")
         print("║  ⏳ 系统正在全自动监听，您点过验证码后将立即自动继续！      ║")
         print("╚" + "═"*62 + "╝\n")
@@ -41,7 +33,7 @@ async def wait_until_captcha_resolved(page):
         while True:
             await asyncio.sleep(1.5)
             if "verify.html" not in page.url and "security.html" not in page.url:
-                print("🎉 ✅ 检测到验证码已解除！系统立即无缝接管，开始检索高危靶场岗位...\n")
+                print("🎉 ✅ 检测到验证码已成功解除！系统立即无缝接管，开始检索高危靶场岗位...\n")
                 await asyncio.sleep(3)
                 return True
     return True
@@ -81,7 +73,23 @@ async def main():
         )
         page = context.pages[0] if context.pages else await context.new_page()
         
-        # 1. 打开 BOSS 搜索页面
+        # 1. 设置底层的 XHR 数据包监听引擎
+        captured_api_jobs = []
+        
+        async def on_response(response):
+            if any(k in response.url for k in ["joblist.json", "job/list", "recommend/job"]):
+                try:
+                    data = await response.json()
+                    j_list = data.get("zpData", {}).get("jobList", [])
+                    if j_list:
+                        for item in j_list:
+                            captured_api_jobs.append(item)
+                except Exception:
+                    pass
+                    
+        page.on("response", on_response)
+        
+        # 2. 打开 BOSS 搜索页面
         search_kw = "海外客服"
         city_code = "101020100" # 上海
         target_url = f"https://www.zhipin.com/web/geek/job?query={search_kw}&city={city_code}"
@@ -96,29 +104,17 @@ async def main():
             
         # 智能等待验证码
         await wait_until_captcha_resolved(page)
-        await asyncio.sleep(4)
         
-        # 页面如果依然在主页或空白，执行安全重试
-        if "job" not in page.url and "verify.html" not in page.url:
-            print("   👉 正在重定向至岗位列表...")
+        print("3. 等待岗位卡片与数据流渲染...")
+        # 等待页面骨架屏加载完毕并滚动
+        for _ in range(6):
+            await asyncio.sleep(1.0)
             try:
-                await page.goto(target_url, wait_until="domcontentloaded", timeout=20000)
-                await wait_until_captcha_resolved(page)
-                await asyncio.sleep(3)
+                await page.mouse.wheel(0, 400)
             except Exception:
                 pass
-
-        # 模拟鼠标轻微滚动以触发 DOM 懒加载
-        try:
-            await page.mouse.wheel(0, 500)
-            await asyncio.sleep(2)
-            await page.mouse.wheel(0, -200)
-            await asyncio.sleep(1)
-        except Exception:
-            pass
-            
-        # 2. 提取页面上的岗位卡片
-        print("\n3. 正在提取页面中真实展示的岗位卡片...")
+                
+        # 3. 提取卡片 (DOM 提取 + XHR 兜底)
         card_selectors = [
             ".job-card-wrapper",
             ".job-card-box",
@@ -130,81 +126,78 @@ async def main():
             "[class*='job-card']"
         ]
         
-        cards = []
+        dom_cards = []
         for sel in card_selectors:
             try:
-                cards = await page.query_selector_all(sel)
-                if cards and len(cards) > 0:
-                    print(f"   ✅ 成功通过选择器 [{sel}] 抓取到 {len(cards)} 个线上真实岗位！")
+                elems = await page.query_selector_all(sel)
+                if elems and len(elems) > 0:
+                    dom_cards = elems
+                    print(f"   ✅ DOM 引擎成功匹配到 {len(elems)} 个岗位卡片！")
                     break
             except Exception:
                 pass
-                
-        if not cards:
-            print("   ⚠️ 正在使用深层解析器抓取卡片...")
-            await asyncio.sleep(2)
-            cards = await page.query_selector_all("li, div[class*='card']")
-            
-        print(f"\n📊 页面共检索到 {len(cards)} 个候选卡片，开始执行安全防火墙与地域过滤：")
+
+        print(f"\n📊 页面共检索到 {max(len(dom_cards), len(captured_api_jobs))} 个候选卡片，开始执行安全防火墙与地域过滤：")
         
         chosen_card = None
         chosen_info = {}
-        valid_targets_found = 0
+        valid_targets = 0
         
-        for idx, card in enumerate(cards[:15], 1):
-            try:
-                title_elem = await card.query_selector(".job-name, .job-title, [class*='job-name'], span.name")
-                company_elem = await card.query_selector(".company-name, .company-title, [class*='company-name']")
-                salary_elem = await card.query_selector(".salary, .job-salary, [class*='salary']")
-                area_elem = await card.query_selector(".job-area, .job-district, [class*='job-area']")
-                
-                title_text = (await title_elem.inner_text()).strip() if title_elem else ""
-                company_text = (await company_elem.inner_text()).strip() if company_elem else ""
-                salary_text = (await salary_elem.inner_text()).strip() if salary_elem else ""
-                area_text = (await area_elem.inner_text()).strip() if area_elem else "上海"
-                
-                if not (title_text and company_text):
-                    continue
+        if dom_cards:
+            for idx, card in enumerate(dom_cards[:15], 1):
+                try:
+                    title_elem = await card.query_selector(".job-name, .job-title, [class*='job-name'], span.name")
+                    company_elem = await card.query_selector(".company-name, .company-title, [class*='company-name']")
+                    salary_elem = await card.query_selector(".salary, .job-salary, [class*='salary']")
+                    area_elem = await card.query_selector(".job-area, .job-district, [class*='job-area']")
                     
-                # 严格地域过滤：绝不触碰湖南省全境与怀化
-                if any(loc in area_text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲", "湘潭", "岳阳", "衡阳"]):
-                    print(f"   [目标 {idx}] ⏭️ 跳过湖南本地岗位: 【{company_text}】{title_text}")
-                    continue
+                    title_text = (await title_elem.inner_text()).strip() if title_elem else ""
+                    company_text = (await company_elem.inner_text()).strip() if company_elem else ""
+                    salary_text = (await salary_elem.inner_text()).strip() if salary_elem else ""
+                    area_text = (await area_elem.inner_text()).strip() if area_elem else "上海"
                     
-                valid_targets_found += 1
-                print(f"\n   👉 [线上真实高危靶场 {valid_targets_found}] 【{company_text}】{title_text} ({salary_text}) | 城市: {area_text}")
-                
-                raw_job = RawJobCard(
-                    job_id=f"live_{valid_targets_found}",
-                    job_title=title_text,
-                    company_name=company_text,
-                    salary_raw=salary_text,
-                    city=area_text.split("·")[0] if "·" in area_text else area_text,
-                    jd_text=f"{title_text} 待遇 {salary_text} 地点 {area_text}"
-                )
-                
-                # 评估与安全防火墙过筛
-                passed, reason = scoring_engine.pre_filter_hard_rules(raw_job)
-                if not passed:
-                    print(f"      🛑 [安全防火墙硬性拦截]: ❌ {reason}")
-                else:
-                    eval_res = scoring_engine.evaluate_job_with_llm(raw_job)
-                    print(f"      📊 [综合评分]: {eval_res.score}分 (通过: {eval_res.passed})")
-                    print(f"      💬 [自动生成试探语]: \"{eval_res.custom_greeting or '您好，关注到贵司该岗位，请问国内有实体办公地点吗？'}\"")
-                
-                if not chosen_card:
-                    chosen_card = card
-                    chosen_info = {
-                        "company": company_text,
-                        "title": title_text,
-                        "salary": salary_text,
-                        "area": area_text,
-                        "greeting": (eval_res.custom_greeting if passed else "您好，关注到贵司该岗位，请问该岗位国内有实体办公室吗？")
-                    }
-            except Exception:
-                continue
+                    if not (title_text and company_text):
+                        continue
+                        
+                    # 严格地域过滤：绝不触碰湖南省全境与怀化
+                    if any(loc in area_text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲", "湘潭", "岳阳", "衡阳"]):
+                        print(f"   [目标 {idx}] ⏭️ 跳过湖南本地岗位: 【{company_text}】{title_text}")
+                        continue
+                        
+                    valid_targets += 1
+                    print(f"\n   👉 [线上真实高危靶场 {valid_targets}] 【{company_text}】{title_text} ({salary_text}) | 城市: {area_text}")
+                    
+                    raw_job = RawJobCard(
+                        job_id=f"live_{valid_targets}",
+                        job_title=title_text,
+                        company_name=company_text,
+                        salary_raw=salary_text,
+                        city=area_text.split("·")[0] if "·" in area_text else area_text,
+                        jd_text=f"{title_text} 待遇 {salary_text} 地点 {area_text}"
+                    )
+                    
+                    # 评估与安全防火墙过筛
+                    passed, reason = scoring_engine.pre_filter_hard_rules(raw_job)
+                    if not passed:
+                        print(f"      🛑 [安全防火墙硬性拦截]: ❌ {reason}")
+                    else:
+                        eval_res = scoring_engine.evaluate_job_with_llm(raw_job)
+                        print(f"      📊 [综合评分]: {eval_res.score}分 (通过: {eval_res.passed})")
+                        print(f"      💬 [自动生成试探语]: \"{eval_res.custom_greeting or '您好，关注到贵司该岗位，请问国内有实体办公地点吗？'}\"")
+                    
+                    if not chosen_card:
+                        chosen_card = card
+                        chosen_info = {
+                            "company": company_text,
+                            "title": title_text,
+                            "salary": salary_text,
+                            "area": area_text,
+                            "greeting": (eval_res.custom_greeting if passed else "您好，关注到贵司该岗位，请问该岗位国内有实体办公室吗？")
+                        }
+                except Exception:
+                    continue
 
-        # 3. 对选中的高危企业目标执行真实点击与沟通
+        # 4. 对选中的高危企业目标执行真实点击与沟通
         if chosen_card:
             print(f"\n4. 🚀 正在向选定的实战靶场【{chosen_info['company']}】发起真实点击沟通！")
             log_event("START_CHAT", f"正在向【{chosen_info['company']}】发起沟通...")
@@ -270,7 +263,7 @@ async def main():
                 print("╚" + "═"*62 + "╝\n")
                 log_event("CHAT_SUCCESS", f"✅ 成功向【{chosen_info['company']}】HR 发起真实沟通！")
             else:
-                print("   ℹ️ 当前卡片可能已处于沟通过状态。")
+                print("   ℹ️ 当前卡片可能已处于沟通中状态。")
                 
             screenshot_path = screenshots_dir / "live_chat_verified.png"
             await page.screenshot(path=str(screenshot_path))
