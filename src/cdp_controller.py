@@ -447,28 +447,69 @@ class CDPBrowserController:
             return False
 
         try:
-            chat_btn = self.search_page.query_selector(".op-btn-chat")
+            # 兼容 BOSS 直聘全部版本与 DOM 结构的【立即沟通】按钮选择器
+            chat_btn_selectors = [
+                ".btn-startchat",
+                "a:has-text('立即沟通')",
+                "button:has-text('立即沟通')",
+                ".op-btn-chat",
+                ".op-btn .btn-startchat",
+                "[class*='btn-startchat']",
+                ".job-detail-box .btn-startchat"
+            ]
+            
+            chat_btn = None
+            for sel in chat_btn_selectors:
+                try:
+                    btn = self.search_page.query_selector(sel)
+                    if btn and btn.is_visible():
+                        chat_btn = btn
+                        break
+                except Exception:
+                    pass
+
             if not chat_btn:
+                logger.info("未在当前卡片详情页找到【立即沟通】按钮，可能已沟通过或正在加载。")
                 return False
 
             btn_text = chat_btn.inner_text().strip()
             if "继续沟通" in btn_text:
-                logger.info("已处于沟通中状态，跳过发起。")
+                logger.info("该岗位已处于沟通中状态，跳过重复发起。")
                 return False
 
-            logger.info("Clicking '立即沟通' button...")
+            logger.info(f"🚀 点击【立即沟通】按钮 (文字: {btn_text}) ...")
             chat_btn.click()
             self.human_delay(2.0, 3.5)
             self.check_and_handle_captcha(self.search_page)
 
+            # 处理 BOSS 直聘打招呼确认弹窗 (如：您正在发起沟通 / 确认发送)
+            confirm_dialog_selectors = [
+                ".dialog-startchat .btn-sure",
+                ".dialog-container .btn-sure",
+                ".dialog-wrap button:has-text('确定')",
+                ".dialog-wrap button:has-text('发送')",
+                "button:has-text('确认沟通')",
+                ".chat-input-dialog .btn-sure"
+            ]
+            for c_sel in confirm_dialog_selectors:
+                try:
+                    confirm_btn = self.search_page.query_selector(c_sel)
+                    if confirm_btn and confirm_btn.is_visible():
+                        logger.info(f"👉 确认打招呼弹窗并点击发送: {c_sel}")
+                        confirm_btn.click()
+                        self.human_delay(1.0, 2.0)
+                        break
+                except Exception:
+                    pass
+
             # 模拟在弹出对话框中输入定制开场白 (若平台支持自定义文本)
-            # 部分版本点击即直接发送默认打招呼，若有输入框则填入
-            input_box = self.search_page.query_selector(".chat-input, textarea")
+            input_box = self.search_page.query_selector(".chat-input, textarea, .dialog-chat-input")
             if input_box and input_box.is_visible():
-                self.human_type(self.search_page, ".chat-input, textarea", greeting_text)
+                self.human_type(self.search_page, ".chat-input, textarea, .dialog-chat-input", greeting_text)
                 self.search_page.keyboard.press("Enter")
                 self.human_delay(1.0, 2.0)
 
+            logger.info("✅ 成功向 HR 发起【立即沟通】！")
             return True
         except Exception as e:
             logger.error(f"Failed to send greeting: {e}")
