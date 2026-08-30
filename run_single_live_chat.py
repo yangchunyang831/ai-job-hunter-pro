@@ -75,7 +75,7 @@ async def send_auto_reply_to_hr(page, reply_text):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘【单次搜索·30秒无回复自动切岗】实战系统启动")
+    print("🎯 BOSS 直聘【单次搜索·精准匹配英语客服·30秒无回复自动切岗】实战系统启动")
     print("="*70 + "\n", flush=True)
     
     config_mgr = ConfigManager()
@@ -155,13 +155,10 @@ async def main():
             try:
                 card_elems = await page.query_selector_all(".job-card-wrapper, .job-card-box, li.job-card, .job-list-box li, [class*='job-card']")
                 for c in card_elems:
-                    try:
-                        txt = (await c.inner_text()).strip()
-                        if len(txt) > 15 and any(k in txt for k in ["K", "k", "薪", "元", "面议"]):
-                            if c not in cards:
-                                cards.append(c)
-                    except Exception:
-                        pass
+                    txt = (await c.inner_text()).strip()
+                    if len(txt) > 5:
+                        if c not in cards:
+                            cards.append(c)
                 if cards:
                     break
             except Exception:
