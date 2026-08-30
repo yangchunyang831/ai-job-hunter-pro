@@ -1,6 +1,6 @@
 """
 Active Screen Communicator (Directly clicks left cards 1..N and right 立即沟通).
-With full hydration waiting, singular /web/geek/job navigation, and dialog confirmation.
+With full hydration waiting, singular /web/geek/job navigation, and auto-dismissing modal dialogs.
 """
 import sys
 import os
@@ -111,9 +111,9 @@ async def main():
                 
         targets = [
             {"name": "【览川】携程英语客服", "x": 230, "y": 280},
-            {"name": "【世臻科技】英语客服专员", "x": 230, "y": 410},
-            {"name": "【腾讯】英语客服正编合同", "x": 230, "y": 540},
-            {"name": "【上海水裹汤泉】英语客服接待", "x": 230, "y": 670},
+            {"name": "【上海诺博】海外客服销售", "x": 230, "y": 410},
+            {"name": "【上海水裹汤泉】英语客服接待", "x": 230, "y": 540},
+            {"name": "【世臻科技】英语客服专员", "x": 230, "y": 670},
             {"name": "【上海启页】英文客服", "x": 230, "y": 800},
         ]
         
@@ -123,6 +123,15 @@ async def main():
             print("\n" + "─"*65)
             print(f"🎯 【正在沟通目标 {idx}/{len(targets)}】: {t['name']}")
             print("─"*65, flush=True)
+            
+            # 关闭之前遗留的“留在该页”弹窗
+            stay_btn = page.locator("button:has-text('留在该页'), a:has-text('留在该页'), .dialog-container .close, .dialog-wrap .close").first
+            try:
+                if await stay_btn.is_visible():
+                    await stay_btn.click(timeout=2000)
+                    await asyncio.sleep(1.0)
+            except Exception:
+                pass
             
             # 1. 点击左侧卡片
             print(f"👉 点击左侧卡片 [{t['name']}]...", flush=True)
@@ -142,7 +151,7 @@ async def main():
                     await asyncio.sleep(2.0)
                     
                     # 3. 确认打招呼弹窗
-                    confirm_btn = page.locator(".dialog-startchat .btn-sure, .dialog-wrap .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('留个话')").first
+                    confirm_btn = page.locator(".dialog-startchat .btn-sure, .dialog-wrap .btn-sure, button:has-text('确定'), button:has-text('发送')").first
                     if await confirm_btn.is_visible():
                         print("👉 发现打招呼弹窗，点击【确定/发送】...", flush=True)
                         await confirm_btn.click(timeout=3000)
@@ -167,6 +176,14 @@ async def main():
                 print(f"   💬 HR 有回复消息，已记录！", flush=True)
                 await asyncio.sleep(5)
             else:
+                # 关闭弹窗为下一个岗位做准备
+                try:
+                    stay_btn = page.locator("button:has-text('留在该页'), a:has-text('留在该页')").first
+                    if await stay_btn.is_visible():
+                        await stay_btn.click(timeout=2000)
+                        await asyncio.sleep(1.0)
+                except Exception:
+                    pass
                 if idx < len(targets):
                     print(f"⏩ 目标 {idx} 无回复，自动平滑切入目标 {idx+1}...", flush=True)
                 
