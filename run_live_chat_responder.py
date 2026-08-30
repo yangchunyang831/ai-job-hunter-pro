@@ -2,10 +2,9 @@
 Dedicated Multi-Turn Live Chat Responder for English CS HRs.
 Features:
 1. Listens to BOSS 直聘 Chat Inbox (https://www.zhipin.com/web/geek/chat).
-2. Auto-waits for IM WebSocket and conversation list hydration.
-3. Detects new messages from English CS HRs.
-4. Automatically responds with intelligent multi-turn dialogue.
-5. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested by HR!
+2. Uses robust locator-based interaction (immune to stale elements).
+3. Automatically responds with intelligent multi-turn dialogue.
+4. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested by HR!
 """
 import sys
 import os
@@ -89,16 +88,18 @@ async def process_chat_inbox(page, fsm):
     """遍历聊天列表并自动回复 HR"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    # 查找左侧会话项
-    conv_items = await page.query_selector_all(".user-list-content li, .chat-user-list li, .main-list li, .geek-chat-list li, [class*='chat-item'], [class*='conversation-item'], [class*='user-item'], ul.user-list li, .user-item")
-    if not conv_items:
+    list_loc = page.locator(".user-list-content li, .chat-user-list li, .geek-chat-list li, ul.user-list li, .main-list li, [class*='user-item']")
+    total_convs = await list_loc.count()
+    
+    if total_convs == 0:
         print("   暂未读取到左侧会话列表，正在等待渲染...", flush=True)
         return
         
-    print(f"   📋 发现 {len(conv_items)} 个历史对话记录，开始检查 HR 互动...", flush=True)
+    print(f"   📋 发现 {total_convs} 个历史对话记录，开始检查 HR 互动...", flush=True)
     
-    for idx, item in enumerate(conv_items[:10], 1):
+    for idx in range(min(total_convs, 10)):
         try:
+            item = list_loc.nth(idx)
             item_text = (await item.inner_text()).strip().replace("\n", " | ")
             if not item_text:
                 continue
@@ -107,19 +108,21 @@ async def process_chat_inbox(page, fsm):
             if any(loc in item_text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲"]):
                 continue
                 
-            print(f"\n   👉 [会话 {idx}] {item_text[:70]}", flush=True)
+            print(f"\n   👉 [会话 {idx+1}] {item_text[:70]}", flush=True)
             
             # 点击展开右侧聊天窗口
             await item.click()
             await asyncio.sleep(2.0)
             
-            msg_elems = await page.query_selector_all(".item-friend, .chat-item-hr, .message-card, .chat-message, [class*='item-friend']")
-            if not msg_elems:
+            msg_loc = page.locator(".item-friend, .chat-item-hr, .message-card, .chat-message, [class*='item-friend']")
+            msg_count = await msg_loc.count()
+            if msg_count == 0:
                 continue
                 
+            # 查找最后一条 HR 发送的消息
             last_hr_msg = ""
-            for el in reversed(msg_elems):
-                txt = (await el.inner_text()).strip()
+            for m_idx in reversed(range(msg_count)):
+                txt = (await msg_loc.nth(m_idx).inner_text()).strip()
                 if txt and not any(my_kw in txt for my_kw in ["已发送", "关注到贵司正在招聘英语客服", "请问该岗位对外语"]):
                     last_hr_msg = txt
                     break
@@ -216,7 +219,7 @@ async def main():
         await page.bring_to_front()
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
-        # 加载消息中心并等待彻底水化 (消除 '加载中，请稍候')
+        # 进入聊天消息中心
         if "web/geek/chat" not in page.url:
             print("2. 正在进入 BOSS 直聘消息沟通中心 (https://www.zhipin.com/web/geek/chat)...", flush=True)
             try:
@@ -225,7 +228,7 @@ async def main():
                 pass
         
         print("2. 正在等待消息中心数据加载就绪...", flush=True)
-        for _ in range(10):
+        for _ in range(12):
             await asyncio.sleep(1.0)
             try:
                 body_txt = await page.evaluate("() => document.body ? document.body.innerText : ''")
@@ -245,7 +248,6 @@ async def main():
         while True:
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                # 保证页面有效
                 if page.is_closed():
                     page = context.pages[0] if context.pages else await context.new_page()
                 await process_chat_inbox(page, fsm)
