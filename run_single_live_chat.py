@@ -1,6 +1,6 @@
 """
 Active Screen Communicator (Directly clicks left cards 1..N and right 立即沟通).
-With full hydration waiting and dialog confirmation to guarantee messages are registered on BOSS 直聘.
+With full hydration waiting, singular /web/geek/job navigation, and dialog confirmation.
 """
 import sys
 import os
@@ -83,7 +83,7 @@ async def main():
                     pass
 
         if not browser:
-            print("❌ 无法直连 Chrome！", flush=True)
+            print("❌ 无法直连 Chrome，请双击 start_real_world_test.bat 启动！", flush=True)
             return
 
         context = browser.contexts[0]
@@ -92,9 +92,11 @@ async def main():
         
         print(f"1. 🎉 成功直连当前屏幕！URL: {page.url}", flush=True)
         
-        if "query=" not in page.url:
-            print("2. 导航至岗位页面...", flush=True)
+        # 严格使用 singular /web/geek/job 以彻底避开骨架屏
+        if "/web/geek/job?" not in page.url or "web/geek/jobs" in page.url:
+            print("2. 正在导航至真实直出岗位页 (https://www.zhipin.com/web/geek/job)...", flush=True)
             await page.goto(target_url, wait_until="domcontentloaded")
+            await asyncio.sleep(3.5)
             
         print("2. 正在等待卡片与按钮彻底渲染 (去除骨架屏)...", flush=True)
         for _ in range(15):
@@ -124,7 +126,10 @@ async def main():
             
             # 1. 点击左侧卡片
             print(f"👉 点击左侧卡片 [{t['name']}]...", flush=True)
-            await page.mouse.click(t["x"], t["y"])
+            try:
+                await page.mouse.click(t["x"], t["y"])
+            except Exception:
+                pass
             await asyncio.sleep(2.5)
             
             # 2. 点击右侧沟通按钮
@@ -133,14 +138,14 @@ async def main():
                 if await chat_btn.is_visible():
                     btn_text = (await chat_btn.inner_text()).strip()
                     print(f"👉 发现沟通按钮【{btn_text}】，正在点击...", flush=True)
-                    await chat_btn.click()
+                    await chat_btn.click(timeout=3000)
                     await asyncio.sleep(2.0)
                     
                     # 3. 确认打招呼弹窗
                     confirm_btn = page.locator(".dialog-startchat .btn-sure, .dialog-wrap .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('留个话')").first
                     if await confirm_btn.is_visible():
                         print("👉 发现打招呼弹窗，点击【确定/发送】...", flush=True)
-                        await confirm_btn.click()
+                        await confirm_btn.click(timeout=3000)
                         await asyncio.sleep(2.0)
             except Exception as e:
                 print(f"   ℹ️ 按钮点击提示: {e}", flush=True)
