@@ -1,13 +1,10 @@
 """
-Bulletproof Live Multi-Turn Chat Responder for English CS HRs.
-Equipped with Chrome Window Closure Watchdog & Auto-Healing Engine.
-1. Detects Chrome window state in real-time.
-2. If window closes/disconnects, automatically cleans locks, relaunches, and reconnects.
-3. Injects text with document.execCommand('insertText') and triggers Send.
+Rock-Solid Native Live Chat Responder for English CS HRs.
+Launches persistent Chrome in visible headed mode directly via Playwright.
+Zero CDP reconnect drops. Permanent window persistence.
 """
 import sys
 import os
-import subprocess
 import asyncio
 import time
 from pathlib import Path
@@ -24,7 +21,6 @@ from src.conversation_fsm import ConversationFSM
 from src.notifier import NotificationManager
 
 chat_url = "https://www.zhipin.com/web/geek/chat"
-chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 user_data_dir = r"C:\chrome_debug_profile"
 resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
 
@@ -82,74 +78,10 @@ async def try_send_resume_attachment(page):
     return False
 
 
-async def ensure_active_browser_and_page(p):
-    """看门狗函数：自动检测并保障 Chrome 窗口及页面处于健康活跃状态"""
-    browser = None
-    try:
-        browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-    except Exception:
-        pass
-        
-    if not browser:
-        print("\n⚠️ 【看门狗检测】Chrome 窗口未启动或已断开，正在自动自愈并拉起...", flush=True)
-        # 清除残留锁文件
-        for f in Path(user_data_dir).glob("Singleton*"):
-            try:
-                f.unlink(missing_ok=True)
-            except Exception:
-                pass
-        lock_file = Path(user_data_dir) / "lockfile"
-        if lock_file.exists():
-            try:
-                lock_file.unlink()
-            except Exception:
-                pass
-                
-        subprocess.Popen([
-            chrome_path,
-            "--remote-debugging-port=9222",
-            f"--user-data-dir={user_data_dir}",
-            "--disable-blink-features=AutomationControlled",
-            "--disable-infobars",
-            "--no-first-run",
-            "--no-default-browser-check",
-            chat_url
-        ])
-        
-        for _ in range(12):
-            await asyncio.sleep(1.0)
-            try:
-                browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-                if browser:
-                    print("🎉 【看门狗自愈成功】已重新连入桌面 Chrome 窗口！", flush=True)
-                    break
-            except Exception:
-                pass
-                
-    if not browser:
-        return None, None
-        
-    context = browser.contexts[0] if browser.contexts else await browser.new_context()
-    pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
-    page = pages[0] if pages else (context.pages[0] if context.pages else await context.new_page())
-    
-    if "web/geek/chat" not in page.url:
-        try:
-            await page.goto(chat_url, wait_until="domcontentloaded")
-        except Exception:
-            pass
-            
-    return context, page
-
-
 async def process_chat_inbox(page, fsm):
     """遍历聊天列表并自动回复 HR"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    if page.is_closed():
-        print("⚠️ 当前页面已关闭，等待看门狗重新接管...", flush=True)
-        return
-        
     # 1. 查找并点击匹配的真实英语客服 HR 会话
     clicked_info = await page.evaluate("""() => {
         const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
@@ -264,17 +196,59 @@ async def main():
     screenshots_dir = Path(__file__).resolve().parent / "tests" / "test_screenshots"
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     
+    # 清理残留锁文件
+    for f in Path(user_data_dir).glob("Singleton*"):
+        try:
+            f.unlink(missing_ok=True)
+        except Exception:
+            pass
+    lock_file = Path(user_data_dir) / "lockfile"
+    if lock_file.exists():
+        try:
+            lock_file.unlink()
+        except Exception:
+            pass
+            
     async with async_playwright() as p:
+        print("1. 正在启动原生常驻 Chrome 浏览器并直达 BOSS 直聘消息中心...", flush=True)
+        context = await p.chromium.launch_persistent_context(
+            user_data_dir=user_data_dir,
+            headless=False,
+            channel="chrome",
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+                "--no-first-run",
+                "--no-default-browser-check"
+            ]
+        )
+        
+        page = context.pages[0] if context.pages else await context.new_page()
+        
+        # 注入防检测特性
+        try:
+            await page.add_init_script("Object.defineProperty(navigator, 'webdriver', { get: () => undefined })")
+        except Exception:
+            pass
+            
+        print(f"2. 🎉 Chrome 窗口已常驻打开！正在加载消息中心: {chat_url}", flush=True)
+        await page.goto(chat_url, wait_until="domcontentloaded")
+        
+        print("3. 正在等待消息中心数据就绪...", flush=True)
+        await asyncio.sleep(5.0)
+        
+        print("\n" + "╔" + "═"*60 + "╗")
+        print("║  🤖 【已开启：精准定位【欧阳先生/翟先生】并自动打字发送！】║")
+        print("╚" + "═"*60 + "╝\n", flush=True)
+        
         cycle = 1
         while True:
-            context, page = await ensure_active_browser_and_page(p)
-            if not page:
-                print("⚠️ 无法连接 Chrome，5 秒后重新尝试自愈...", flush=True)
-                await asyncio.sleep(5)
-                continue
-                
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
+                # 确保当前页面在消息中心
+                if "web/geek/chat" not in page.url:
+                    await page.goto(chat_url, wait_until="domcontentloaded")
+                    await asyncio.sleep(3.0)
                 await process_chat_inbox(page, fsm)
             except Exception as e:
                 print(f"巡检通知: {e}", flush=True)
