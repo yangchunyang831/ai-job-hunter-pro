@@ -9,9 +9,9 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8")
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config_loader import ConfigManager
 from src.scoring_engine import ScoringEngine
@@ -27,6 +27,7 @@ async def listen_for_hr_reply(page, duration_sec=30):
         remaining = int(duration_sec - (time.time() - start_time))
         await asyncio.sleep(3.0)
         try:
+            # 检查是否有新消息或者未读红点变化
             badge = page.locator(".nav-chat .badge, .header-nav a:has-text('消息') .num, [class*='badge']").first
             if await badge.is_visible():
                 badge_txt = (await badge.inner_text()).strip()
@@ -46,7 +47,7 @@ async def main():
     print("🎯 BOSS 直聘【真机屏幕直接交互·30秒无回复自动切岗】启动")
     print("="*70 + "\n", flush=True)
     
-    screenshots_dir = Path(__file__).resolve().parent / "tests" / "test_screenshots"
+    screenshots_dir = Path(__file__).resolve().parent.parent / "tests" / "test_screenshots"
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     
     async with async_playwright() as p:
@@ -56,6 +57,12 @@ async def main():
         
         print(f"1. 🎉 成功直连当前屏幕！URL: {page.url}", flush=True)
         
+        # 获取左侧卡片坐标列表 (每张卡片高度约 110px)
+        # 卡片 1 坐标: (230, 280)
+        # 卡片 2 坐标: (230, 410)
+        # 卡片 3 坐标: (230, 540)
+        # 卡片 4 坐标: (230, 670)
+        # 卡片 5 坐标: (230, 800)
         targets = [
             {"name": "【览川】携程英语客服", "x": 230, "y": 280},
             {"name": "【世臻科技】英语客服专员", "x": 230, "y": 410},
@@ -71,12 +78,12 @@ async def main():
             print(f"🎯 【正在沟通目标 {idx}/{len(targets)}】: {t['name']}")
             print("─"*65, flush=True)
             
-            # 1. 点击左侧卡片
+            # 1. 鼠标点击左侧卡片
             print(f"👉 点击左侧卡片 [{t['name']}]...", flush=True)
             await page.mouse.click(t["x"], t["y"])
             await asyncio.sleep(2.0)
             
-            # 2. 点击右侧立即沟通
+            # 2. 点击右侧【立即沟通】
             chat_btn = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat, .op-btn-chat").first
             clicked = False
             try:
@@ -107,21 +114,17 @@ async def main():
             print(f"✅ 已成功向【{t['name']}】发送打招呼！", flush=True)
             print(f"   💬 招呼语: \"{greeting_msg}\"", flush=True)
             
-            try:
-                await page.screenshot(path=str(screenshots_dir / f"live_chat_target_{idx}.png"))
-                await page.screenshot(path=str(screenshots_dir / "live_chat_verified.png"))
-            except Exception:
-                pass
+            await page.screenshot(path=str(screenshots_dir / f"live_chat_target_{idx}.png"))
+            await page.screenshot(path=str(screenshots_dir / "live_chat_verified.png"))
             
-            # 4. 启动 30 秒监听
+            # 4. 启动 30 秒监听倒计时
             has_reply, msg = await listen_for_hr_reply(page, duration_sec=30)
             
             if has_reply:
                 print(f"   💬 HR 有回复消息，已记录！", flush=True)
                 await asyncio.sleep(5)
             else:
-                if idx < len(targets):
-                    print(f"⏩ 目标 {idx} 无回复，自动平滑切入目标 {idx+1}...", flush=True)
+                print(f"⏩ 目标 {idx} 无回复，自动平滑切入目标 {idx+1}...", flush=True)
                 
         print("\n" + "="*70)
         print("🎉 【所有 5 个安全测试岗位沟通轮次已全部完成！】")
