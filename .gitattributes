@@ -1,0 +1,35 @@
+# ==============================================================================
+# Git Attributes - Standard Line Ending & Encoding Configuration
+# ==============================================================================
+
+# Set default behaviour to automatically normalize line endings
+* text=auto
+
+# Windows Batch scripts MUST use CRLF line endings
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Linux/macOS shell scripts MUST use LF line endings
+*.sh text eol=lf
+
+# Python, YAML, JSON, Markdown source files
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.exe binary
+*.dll binary
+*.whl binary
