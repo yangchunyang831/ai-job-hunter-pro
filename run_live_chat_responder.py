@@ -1,9 +1,9 @@
 """
 Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
-Pure Human Simulation:
-1. Types into input box with natural keystroke cadence.
-2. Sends via standard physical Enter key and exact .btn-send button (0 wildcard link clicks, 0 shortcut collisions).
-3. 100% immune to about:blank.
+Features:
+1. Intercepts window.open to block any popup windows from turning into about:blank.
+2. Pure direct typing + physical Enter key sending.
+3. Completely self-contained within the main chat interface.
 """
 import sys
 import os
@@ -45,7 +45,7 @@ def generate_english_cs_reply(hr_msg: str) -> str:
     msg_lower = hr_msg.lower()
     
     if any(k in msg_lower for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
-        return "好的，我的个人求职简历【杨春_个人求职简历.pdf】已为您发送，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
+        return "您好！我的个人求职简历已准备好（杨春，本科区块链工程专业，具备良好的英语沟通与客服能力），随时可与您进一步交流！"
         
     if any(k in msg_lower for k in ["到岗", "离职", "什么时候", "在职", "时间"]):
         return "您好！我目前已处于离职状态，可根据贵司安排随时到岗开展工作。"
@@ -57,28 +57,6 @@ def generate_english_cs_reply(hr_msg: str) -> str:
         return "您好！我可以接受公司的正规排班与轮休制度，具有良好的团队协作与抗压能力。"
         
     return "您好！关注到贵司的英文客服岗位，我的英语听说读写能力良好，能熟练处理英文工单与日常客户线上沟通，请问方便进一步了解下具体的岗位职责和业务方向吗？"
-
-
-async def try_send_resume_attachment(page):
-    """尝试通过聊天工具栏发送附件简历"""
-    if not os.path.exists(resume_file_path):
-        return False
-        
-    try:
-        send_resume_btn = page.locator(".chat-op .btn-resume, button:has-text('发简历'), button:has-text('发送简历')").first
-        if await send_resume_btn.is_visible():
-            print("      📎 正在自动点击工具栏【发送附件简历】按钮...", flush=True)
-            await send_resume_btn.click(timeout=3000)
-            await asyncio.sleep(1.5)
-            sure_btn = page.locator(".dialog-wrap .btn-sure, button:has-text('确定')").first
-            if await sure_btn.is_visible():
-                await sure_btn.click(timeout=3000)
-                print("      🎉 ✅ 附件简历已通过平台一键成功送达！", flush=True)
-                await asyncio.sleep(1.5)
-                return True
-    except Exception:
-        pass
-    return False
 
 
 async def safe_evaluate(page, js_code, arg=None, retries=3):
@@ -178,10 +156,6 @@ async def process_chat_inbox(page, fsm):
             reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
             print(f"      🤖 【生成针对性回复】: \"{reply_text}\"", flush=True)
             
-            # 索要简历处理
-            if any(k in last_hr_msg.lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
-                await try_send_resume_attachment(page)
-                
             # 3. 聚焦输入框并键入
             print("      👉 正在激活输入框并进行物理级真机键盘打字...", flush=True)
             
@@ -202,28 +176,11 @@ async def process_chat_inbox(page, fsm):
             await page.keyboard.type(reply_text, delay=25)
             await asyncio.sleep(0.8)
             
-            # 5. 纯物理回车与精准发送按钮（绝不误触其他链接）
-            print("      🚀 正在触发发送（敲击物理回车 / 点击发送按钮）...", flush=True)
-            
-            # 优先敲击物理 Enter 键发送
+            # 5. 纯物理回车发送
+            print("      🚀 正在敲击物理回车发送...", flush=True)
             await page.keyboard.press("Enter")
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(2.5)
             
-            # 如果输入框内依然有文字，精准点击右下角专有发送按钮
-            has_remaining = await safe_evaluate(page, """() => {
-                const ed = document.querySelector('#chat-input, div[contenteditable="true"], textarea');
-                return ed && ed.innerText && ed.innerText.trim().length > 0;
-            }""")
-            
-            if has_remaining:
-                send_btn = page.locator(".chat-op .btn-send, button.btn-send").first
-                try:
-                    if await send_btn.is_visible():
-                        await send_btn.click(force=True)
-                except Exception:
-                    pass
-                    
-            await asyncio.sleep(2.0)
             print(f"      🎉 ✅ 消息已打字并完成发送！", flush=True)
             
         except Exception as e:
@@ -273,11 +230,12 @@ async def main():
         # 始终使用主默认标签页
         page = context.pages[0]
         
-        # 注入拟真人特性
+        # 注入防弹拟真人特性（拦截 window.open 和 window.close）
         try:
             await page.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
                 window.close = () => { console.warn("Blocked window.close()"); };
+                window.open = (url) => { console.warn("Blocked popup window.open()", url); return null; };
             """)
         except Exception:
             pass
