@@ -1,6 +1,6 @@
 """
 Direct Persistent Multi-Turn Live Chat Responder for English CS HRs.
-Uses direct Playwright persistent context (100% immune to CDP port disconnects).
+Opens directly to https://www.zhipin.com/web/geek/chat (eliminating about:blank).
 Features:
 1. Strict Geofencing: 100% BLOCKS Hunan / Changsha / Huaihua / Hongjiang.
 2. Target Filtering: ONLY communicates with HRs of 英语客服 / 英文客服 / 海外客服.
@@ -194,19 +194,25 @@ async def main():
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     
     async with async_playwright() as p:
-        print("1. 正在启动 Chrome 浏览器并载入用户已登录状态...", flush=True)
+        print("1. 正在启动 Chrome 浏览器并直达 BOSS 直聘消息沟通中心...", flush=True)
         context = await p.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
             headless=False,
             channel="chrome",
-            args=["--no-first-run", "--no-default-browser-check"]
+            args=[
+                "--no-first-run",
+                "--no-default-browser-check",
+                chat_url
+            ]
         )
         
         page = context.pages[0] if context.pages else await context.new_page()
         
-        print("2. 正在进入消息沟通中心 (https://www.zhipin.com/web/geek/chat)...", flush=True)
-        await page.goto(chat_url, wait_until="domcontentloaded")
-        
+        # 确保直达消息中心
+        if "web/geek/chat" not in page.url:
+            print("2. 正在加载页面: https://www.zhipin.com/web/geek/chat ...", flush=True)
+            await page.goto(chat_url, wait_until="domcontentloaded")
+            
         print("2. 正在等待消息中心数据加载就绪...", flush=True)
         for _ in range(15):
             await asyncio.sleep(1.0)
@@ -226,7 +232,13 @@ async def main():
         while True:
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                await process_chat_inbox(page, fsm)
+                # 检查页面是否处于活动状态
+                active_pages = [pg for pg in context.pages if not pg.is_closed()]
+                if active_pages:
+                    curr_page = active_pages[0]
+                    if "web/geek/chat" not in curr_page.url:
+                        await curr_page.goto(chat_url, wait_until="domcontentloaded")
+                    await process_chat_inbox(curr_page, fsm)
             except Exception as e:
                 print(f"巡检异常: {e}", flush=True)
                 
