@@ -1,9 +1,9 @@
 """
 Bulletproof Live Multi-Turn Chat Responder for English CS HRs.
-Features:
-1. Anti-detection stealth flags (--disable-blink-features=AutomationControlled).
-2. Prevents anti-automation closure from BOSS 直聘 WAF.
-3. Resilient message typing with keyboard and robust Send triggering.
+Equipped with Chrome Window Closure Watchdog & Auto-Healing Engine.
+1. Detects Chrome window state in real-time.
+2. If window closes/disconnects, automatically cleans locks, relaunches, and reconnects.
+3. Injects text with document.execCommand('insertText') and triggers Send.
 """
 import sys
 import os
@@ -82,17 +82,74 @@ async def try_send_resume_attachment(page):
     return False
 
 
-async def process_chat_inbox(context, fsm):
+async def ensure_active_browser_and_page(p):
+    """看门狗函数：自动检测并保障 Chrome 窗口及页面处于健康活跃状态"""
+    browser = None
+    try:
+        browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+    except Exception:
+        pass
+        
+    if not browser:
+        print("\n⚠️ 【看门狗检测】Chrome 窗口未启动或已断开，正在自动自愈并拉起...", flush=True)
+        # 清除残留锁文件
+        for f in Path(user_data_dir).glob("Singleton*"):
+            try:
+                f.unlink(missing_ok=True)
+            except Exception:
+                pass
+        lock_file = Path(user_data_dir) / "lockfile"
+        if lock_file.exists():
+            try:
+                lock_file.unlink()
+            except Exception:
+                pass
+                
+        subprocess.Popen([
+            chrome_path,
+            "--remote-debugging-port=9222",
+            f"--user-data-dir={user_data_dir}",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--no-first-run",
+            "--no-default-browser-check",
+            chat_url
+        ])
+        
+        for _ in range(12):
+            await asyncio.sleep(1.0)
+            try:
+                browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                if browser:
+                    print("🎉 【看门狗自愈成功】已重新连入桌面 Chrome 窗口！", flush=True)
+                    break
+            except Exception:
+                pass
+                
+    if not browser:
+        return None, None
+        
+    context = browser.contexts[0] if browser.contexts else await browser.new_context()
+    pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
+    page = pages[0] if pages else (context.pages[0] if context.pages else await context.new_page())
+    
+    if "web/geek/chat" not in page.url:
+        try:
+            await page.goto(chat_url, wait_until="domcontentloaded")
+        except Exception:
+            pass
+            
+    return context, page
+
+
+async def process_chat_inbox(page, fsm):
     """遍历聊天列表并自动回复 HR"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
-    if not pages:
-        pages = [pg for pg in context.pages if not pg.is_closed()]
-    if not pages:
+    if page.is_closed():
+        print("⚠️ 当前页面已关闭，等待看门狗重新接管...", flush=True)
         return
-    page = pages[0]
-    
+        
     # 1. 查找并点击匹配的真实英语客服 HR 会话
     clicked_info = await page.evaluate("""() => {
         const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
@@ -115,11 +172,6 @@ async def process_chat_inbox(context, fsm):
     print(f"   🎯 【已精准锁定真实 HR 会话】: {clicked_info['text']}", flush=True)
     await asyncio.sleep(2.5)
     
-    # 刷新活跃 page 句柄
-    pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
-    if pages:
-        page = pages[0]
-        
     # 2. 提取右侧聊天历史
     messages = []
     try:
@@ -149,7 +201,7 @@ async def process_chat_inbox(context, fsm):
     if any(k in (last_hr_msg or "").lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
         await try_send_resume_attachment(page)
         
-    # 3. 填入输入框并发送 (使用 Playwright 定位器 + 键盘按键与 DOM 注入)
+    # 3. 填入输入框并发送
     print("   👉 正在向聊天输入框填入回复并触发发送...", flush=True)
     
     try:
@@ -213,75 +265,17 @@ async def main():
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     
     async with async_playwright() as p:
-        browser = None
-        for _ in range(3):
-            try:
-                browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-                break
-            except Exception:
-                await asyncio.sleep(1.0)
-                
-        if not browser:
-            print("1. 正在启动 Chrome 浏览器并直达 BOSS 直聘消息沟通中心...", flush=True)
-            subprocess.Popen([
-                chrome_path,
-                "--remote-debugging-port=9222",
-                f"--user-data-dir={user_data_dir}",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-infobars",
-                "--no-first-run",
-                "--no-default-browser-check",
-                chat_url
-            ])
-            for _ in range(12):
-                await asyncio.sleep(1.0)
-                try:
-                    browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-                    break
-                except Exception:
-                    pass
-
-        if not browser:
-            print("❌ 无法直连 Chrome！", flush=True)
-            return
-
-        context = browser.contexts[0]
-        pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
-        page = pages[0] if pages else context.pages[0]
-            
-        print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
-        
-        # 注入防检测特性
-        try:
-            await page.add_init_script("Object.defineProperty(navigator, 'webdriver', { get: () => undefined })")
-        except Exception:
-            pass
-            
-        # 确保直达消息中心
-        if "web/geek/chat" not in page.url:
-            print("2. 正在直达页面: https://www.zhipin.com/web/geek/chat ...", flush=True)
-            await page.goto(chat_url, wait_until="domcontentloaded")
-            
-        print("2. 正在等待消息中心数据加载就绪...", flush=True)
-        for _ in range(15):
-            await asyncio.sleep(1.0)
-            try:
-                body_txt = await page.evaluate("() => document.body ? document.body.innerText : ''")
-                if "加载中" not in body_txt and len(body_txt) > 20:
-                    print("   🎉 消息中心已彻底加载就绪！", flush=True)
-                    break
-            except Exception:
-                pass
-                
-        print("\n" + "╔" + "═"*60 + "╗")
-        print("║  🤖 【已开启：精准定位【欧阳先生/翟先生】并自动打字发送！】║")
-        print("╚" + "═"*60 + "╝\n", flush=True)
-        
         cycle = 1
         while True:
+            context, page = await ensure_active_browser_and_page(p)
+            if not page:
+                print("⚠️ 无法连接 Chrome，5 秒后重新尝试自愈...", flush=True)
+                await asyncio.sleep(5)
+                continue
+                
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                await process_chat_inbox(context, fsm)
+                await process_chat_inbox(page, fsm)
             except Exception as e:
                 print(f"巡检通知: {e}", flush=True)
                 
