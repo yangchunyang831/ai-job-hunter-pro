@@ -1,9 +1,7 @@
 """
-Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
-Features:
-1. Intercepts window.open to block any popup windows from turning into about:blank.
-2. Pure direct typing + physical Enter key sending.
-3. Completely self-contained within the main chat interface.
+Rock-Solid 100% Pure Native Live Chat Responder for English CS HRs.
+Zero Prototype Tampering: Leaves all native JS methods (window.open, window.close) 100% pure native code
+to pass all BOSS 直聘 frontend integrity checks with flying colors.
 """
 import sys
 import os
@@ -213,7 +211,7 @@ async def main():
             pass
             
     async with async_playwright() as p:
-        print("1. 正在以 100% 原生拟真模式启动常驻 Chrome 浏览器...", flush=True)
+        print("1. 正在以 100% 原生纯净真机模式启动常驻 Chrome 浏览器...", flush=True)
         context = await p.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
             headless=False,
@@ -229,16 +227,6 @@ async def main():
         
         # 始终使用主默认标签页
         page = context.pages[0]
-        
-        # 注入防弹拟真人特性（拦截 window.open 和 window.close）
-        try:
-            await page.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                window.close = () => { console.warn("Blocked window.close()"); };
-                window.open = (url) => { console.warn("Blocked popup window.open()", url); return null; };
-            """)
-        except Exception:
-            pass
             
         print(f"2. 🎉 Chrome 窗口已常驻打开！正在直达消息中心: {chat_url}", flush=True)
         try:
@@ -247,7 +235,7 @@ async def main():
             pass
             
         print("3. 正在等待消息中心数据加载就绪...", flush=True)
-        await asyncio.sleep(4.0)
+        await asyncio.sleep(5.0)
         
         print("\n" + "╔" + "═"*60 + "╗")
         print(f"║  🤖 【已开启：有限 {MAX_INSPECTION_ROUNDS} 轮自动应答【欧阳先生/翟先生】！】 ║")
