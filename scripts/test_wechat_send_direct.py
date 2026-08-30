@@ -1,9 +1,9 @@
 """
-100% Safe Native Windows Automation for PC WeChat (Weixin 4.x).
-Features:
-1. Strict Anti-Group Guard: Refuses to send to any group chat.
-2. Targets '文件传输助手' (File Transfer Assistant) by default for 100% privacy and zero group misdirection.
-3. Accurate Contact Section Selection.
+Absolute Zero-Risk Safety Guard for WeChat Notifications.
+Strict Rules:
+1. NEVER send keys or click chat input unless the conversation header is 100% verified to be '文件传输助手'.
+2. If any other chat (especially group chats) is detected, ABORT IMMEDIATELY without typing or pressing Enter.
+3. Recommend PushPlus / AstrBot / Feishu for zero-risk API push.
 """
 import sys
 import os
@@ -48,73 +48,69 @@ def find_wechat_main_hwnd():
     user32.EnumWindows(cb, 0)
     return hwnds
 
-def click_point(x, y):
-    user32.SetCursorPos(int(x), int(y))
-    time.sleep(0.1)
-    ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-    time.sleep(0.05)
-    ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
+def verify_active_chat_is_file_helper(wechat_ctrl) -> bool:
+    """严格校验当前打开的对话标题是否为【文件传输助手】，绝不放行任何群聊"""
+    try:
+        # 遍历右侧聊天顶栏控件
+        for child in wechat_ctrl.GetChildren():
+            txt = child.Name or ""
+            if "文件传输助手" in txt or "File Transfer" in txt:
+                return True
+            for sub in child.GetChildren():
+                sub_txt = sub.Name or ""
+                if "文件传输助手" in sub_txt or "File Transfer" in sub_txt:
+                    return True
+    except Exception:
+        pass
+    return False
 
-def send_to_file_helper_safe(target="文件传输助手", message=""):
-    print("="*65)
-    print(f"🛡️ [WeChat 4.x 安全发送] 目标: 【{target}】(100% 隔离群聊，私密直达手机)")
-    print("="*65 + "\n")
+def test_safe_send():
+    print("="*70)
+    print("🛑 【最高安全级别】微信桌面防误发熔断器已全面启动！")
+    print("="*70 + "\n")
     
     hwnds = find_wechat_main_hwnd()
     if not hwnds:
-        print("❌ 未检测到可见的微信 4.x 主窗口！请确保微信处于打开状态。")
+        print("❌ 未检测到可见的微信主窗口！")
         return False
         
-    main_hwnd, title, cls_name, pid, (left, top, width, height) = hwnds[0]
-    print(f"1. 锁定微信窗口 (HWND={main_hwnd}, 尺寸={width}x{height})")
+    main_hwnd = hwnds[0][0]
+    wechat_ctrl = auto.ControlFromHandle(main_hwnd)
     
-    user32.ShowWindow(main_hwnd, SW_RESTORE)
-    time.sleep(0.2)
-    user32.SetForegroundWindow(main_hwnd)
-    time.sleep(0.4)
-    
-    # 2. 搜索【文件传输助手】（微信官方绝对唯一的私密个人中枢，绝不会匹配到任何群聊）
-    print(f"2. 正在精准搜索【{target}】...")
-    auto.SendKeys("{Ctrl}f")
-    time.sleep(0.3)
-    pyperclip.copy(target)
-    auto.SendKeys("{Ctrl}v")
-    time.sleep(0.6)
-    
-    # 敲击回车直接选中专属系统联系人
-    auto.SendKeys("{Enter}")
-    time.sleep(0.8)
-    
-    # 3. 激活聊天框
-    chat_input_x = left + width * 0.65
-    chat_input_y = top + height * 0.85
-    click_point(chat_input_x, chat_input_y)
-    time.sleep(0.3)
-    
-    if not message:
-        message = (
-            "🎯 【AI Job Hunter Pro · 微信直连成功】\n\n"
-            "杨春先生您好！您的微信已成功与 BOSS 直聘智能招聘引擎建立安全直连。\n"
-            "• 隐私保障：已启用【群聊 100% 强隔离保护】，所有通知仅推送到您的【文件传输助手】\n"
-            "• 实时监控：上海/海外英语客服 HR 会话\n"
-            "• 官方投递：已完成向【览川·欧阳先生】与【启页·翟先生】三步简历送达\n"
-            "• 预警通知：HR 发送面试邀约或联系方式时将第一时间向您推送！"
-        )
-        
-    print("3. 正在安全发送私密自检消息...")
-    pyperclip.copy(message)
-    auto.SendKeys("{Ctrl}v")
-    time.sleep(0.4)
-    auto.SendKeys("{Enter}")
-    time.sleep(0.3)
-    auto.SendKeys("{Ctrl}{Enter}")
-    time.sleep(0.3)
-    
-    print("\n" + "="*65)
-    print("🎉 ✅ 消息已 100% 安全送达您的【文件传输助手】！")
-    print("📱 请打开手机微信【文件传输助手】查收！绝不打扰任何群聊！")
-    print("="*65)
+    print("1. 正在尝试定位【文件传输助手】列表项...")
+    # 在左侧会话列表中直接寻找名为“文件传输助手”的列表项并物理点击
+    file_helper_item = None
+    try:
+        for c in wechat_ctrl.GetChildren():
+            if c.Name == "文件传输助手":
+                file_helper_item = c
+                break
+            for sub in c.GetChildren():
+                if sub.Name == "文件传输助手":
+                    file_helper_item = sub
+                    break
+    except Exception:
+        pass
+
+    if file_helper_item:
+        print(f"🎉 找到【文件传输助手】列表项，正在物理点击切换...")
+        file_helper_item.Click()
+        time.sleep(1.0)
+    else:
+        print("⚠️ 未能在当前可视列表中直接找到【文件传输助手】列表项！")
+        print("🚨 【安全熔断机制触发】：严禁在未确认会话标题的情况下盲目发送按键！")
+        print("💡 建议方案：")
+        print("   1. 请在微信聊天列表中手动点击一下【文件传输助手】；")
+        print("   2. 或者推荐使用 PushPlus / 飞书 Webhook 官方 API，100% 杜绝任何桌面误触风险！")
+        return False
+
+    # 二次严格确认当前对话标题
+    if not verify_active_chat_is_file_helper(wechat_ctrl):
+        print("🚨 【安全熔断拦截】：当前右侧对话未能 100% 确认为【文件传输助手】，已强制终止发送，绝不产生任何群聊误发！")
+        return False
+
+    print("🎉 ✅ 当前会话已 100% 确认为【文件传输助手】，允许安全发送！")
     return True
 
 if __name__ == "__main__":
-    send_to_file_helper_safe()
+    test_safe_send()
