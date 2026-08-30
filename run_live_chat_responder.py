@@ -1,14 +1,14 @@
 """
-Strict English CS Multi-Turn Live Chat Responder.
+Direct Persistent Multi-Turn Live Chat Responder for English CS HRs.
+Uses direct Playwright persistent context (100% immune to CDP port disconnects).
 Features:
 1. Strict Geofencing: 100% BLOCKS Hunan / Changsha / Huaihua / Hongjiang.
-2. Target Filtering: ONLY replies to HRs of 英语客服 / 英文客服 / 海外客服 / 跨境客服.
-3. Automatically sends proactive follow-ups and responds to HR inquiries.
-4. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested by HR!
+2. Target Filtering: ONLY communicates with HRs of 英语客服 / 英文客服 / 海外客服.
+3. Automatically clicks the conversation, types the high-EQ reply, and clicks Send!
+4. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested!
 """
 import sys
 import os
-import subprocess
 import asyncio
 import time
 from pathlib import Path
@@ -21,13 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from src.config_loader import ConfigManager
 from src.scoring_engine import ScoringEngine
-from src.schemas import RawJobCard
-from src.battle_logger import log_event
 from src.conversation_fsm import ConversationFSM
 from src.notifier import NotificationManager
 
 chat_url = "https://www.zhipin.com/web/geek/chat"
-chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 user_data_dir = r"C:\chrome_debug_profile"
 resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
 
@@ -76,21 +73,13 @@ async def try_send_resume_attachment(page):
                 print("      🎉 ✅ 附件简历已通过平台一键成功送达！", flush=True)
                 await asyncio.sleep(1.5)
                 return True
-                
-        file_input = page.locator("input[type='file']").first
-        if await file_input.is_visible():
-            print(f"      📎 正在上传简历文件: {resume_file_path} ...", flush=True)
-            await file_input.set_input_files(resume_file_path)
-            await asyncio.sleep(2.0)
-            print("      🎉 ✅ 简历文件已成功上传至聊天窗口！", flush=True)
-            return True
-    except Exception as e:
+    except Exception:
         pass
     return False
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (严格只回复英语客服/海外客服 HR，绝对不碰湖南本地)"""
+    """遍历聊天列表并自动回复 HR"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
     conv_list = await page.evaluate("""() => {
@@ -109,7 +98,7 @@ async def process_chat_inbox(page, fsm):
         print("   暂未读取到左侧会话列表，正在等待渲染...", flush=True)
         return
         
-    print(f"   📋 发现 {len(conv_list)} 个历史会话，开始筛选【英语客服/海外客服】目标...", flush=True)
+    print(f"   📋 发现 {len(conv_list)} 个会话记录，开始筛选【英语客服/海外客服】目标...", flush=True)
     
     for c in conv_list:
         try:
@@ -171,14 +160,19 @@ async def process_chat_inbox(page, fsm):
             if await input_box.is_visible():
                 await input_box.click(timeout=3000)
                 await input_box.fill(reply_text)
-                await page.keyboard.press("Enter")
-                print("      🎉 ✅ 消息已成功发送至英语客服 HR！", flush=True)
-                log_event("HR_CHAT_REPLY_SENT", f"成功回复英语客服 HR: {reply_text[:30]}")
+                await asyncio.sleep(0.5)
+                
+                send_btn = page.locator("button.btn-send, button:has-text('发送'), [class*='btn-send'], .op-btn-send").first
+                if await send_btn.is_visible():
+                    await send_btn.click(timeout=2000)
+                else:
+                    await page.keyboard.press("Enter")
+                    
+                print("      🎉 ✅ 消息已成功打字并发送至 HR 聊天视窗！", flush=True)
                 await asyncio.sleep(2.0)
                 
                 try:
                     await page.screenshot(path="tests/test_screenshots/live_chat_replied.png")
-                    await page.screenshot(path="tests/test_screenshots/live_chat_verified.png")
                 except Exception:
                     pass
         except Exception as e:
@@ -188,7 +182,7 @@ async def process_chat_inbox(page, fsm):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘【HR 聊天室·严格限定仅回复英语客服 HR】启动")
+    print("🎯 BOSS 直聘【HR 聊天室·全自动多轮对话与智能回复引擎】")
     print(f"🛡️ 湖南本地 100% 隔离 | 📄 绑定简历: {resume_file_path}")
     print("="*70 + "\n", flush=True)
     
@@ -196,53 +190,25 @@ async def main():
     notifier = NotificationManager()
     fsm = ConversationFSM(config_manager=config_mgr, notifier=notifier)
     
+    screenshots_dir = Path(__file__).resolve().parent / "tests" / "test_screenshots"
+    screenshots_dir.mkdir(parents=True, exist_ok=True)
+    
     async with async_playwright() as p:
-        browser = None
-        for _ in range(3):
-            try:
-                browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-                break
-            except Exception:
-                await asyncio.sleep(1.0)
-                
-        if not browser:
-            print("1. 正在启动 Chrome 浏览器并进入消息聊天室...", flush=True)
-            subprocess.Popen([
-                chrome_path,
-                "--remote-debugging-port=9222",
-                f"--user-data-dir={user_data_dir}",
-                "--no-first-run",
-                "--no-default-browser-check",
-                chat_url
-            ])
-            for _ in range(12):
-                await asyncio.sleep(1.0)
-                try:
-                    browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-                    break
-                except Exception:
-                    pass
-
-        if not browser:
-            print("❌ 无法直连 Chrome，请双击 start_auto_chat_responder.bat 后重试！", flush=True)
-            return
-
-        context = browser.contexts[0]
-        pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
-        page = pages[0] if pages else context.pages[0]
-            
-        print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
+        print("1. 正在启动 Chrome 浏览器并载入用户已登录状态...", flush=True)
+        context = await p.chromium.launch_persistent_context(
+            user_data_dir=user_data_dir,
+            headless=False,
+            channel="chrome",
+            args=["--no-first-run", "--no-default-browser-check"]
+        )
         
-        # 进入聊天消息中心
-        if "web/geek/chat" not in page.url:
-            print("2. 正在进入 BOSS 直聘消息沟通中心 (https://www.zhipin.com/web/geek/chat)...", flush=True)
-            try:
-                await page.goto(chat_url, wait_until="domcontentloaded", timeout=25000)
-            except Exception:
-                pass
+        page = context.pages[0] if context.pages else await context.new_page()
+        
+        print("2. 正在进入消息沟通中心 (https://www.zhipin.com/web/geek/chat)...", flush=True)
+        await page.goto(chat_url, wait_until="domcontentloaded")
         
         print("2. 正在等待消息中心数据加载就绪...", flush=True)
-        for _ in range(12):
+        for _ in range(15):
             await asyncio.sleep(1.0)
             try:
                 body_txt = await page.evaluate("() => document.body ? document.body.innerText : ''")
@@ -251,21 +217,18 @@ async def main():
                     break
             except Exception:
                 pass
-        
+                
         print("\n" + "╔" + "═"*60 + "╗")
-        print("║  🤖 【已开启：自动为翟先生/欧阳先生等英语客服 HR 跟进发送！】║")
+        print("║  🤖 【已开启：自动为【翟先生/欧阳先生】等英语客服 HR 打字发送！】║")
         print("╚" + "═"*60 + "╝\n", flush=True)
         
         cycle = 1
         while True:
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                pages = [pg for pg in context.pages if not pg.is_closed()]
-                if pages:
-                    page = pages[0]
-                    await process_chat_inbox(page, fsm)
+                await process_chat_inbox(page, fsm)
             except Exception as e:
-                print(f"巡检通知: {e}", flush=True)
+                print(f"巡检异常: {e}", flush=True)
                 
             print("⏳ 正在守候英语客服 HR 新消息中... (15 秒后自动检查)", flush=True)
             await asyncio.sleep(15)
