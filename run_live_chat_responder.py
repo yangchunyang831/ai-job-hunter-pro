@@ -1,9 +1,9 @@
 """
 Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
-Features:
-1. ignore_default_args=["--enable-automation"] completely removes Chromium automation flags.
-2. Complete stealth shielding: Chrome acts as genuine human browser (0 about:blank, 0 window closures).
-3. Finite 3-round inspection with physical mouse clicks and dual Enter/Ctrl+Enter sending.
+Pure Human Simulation:
+1. Types into input box with natural keystroke cadence.
+2. Sends via standard physical Enter key and exact .btn-send button (0 wildcard link clicks, 0 shortcut collisions).
+3. 100% immune to about:blank.
 """
 import sys
 import os
@@ -65,12 +65,12 @@ async def try_send_resume_attachment(page):
         return False
         
     try:
-        send_resume_btn = page.locator("button:has-text('发简历'), button:has-text('发送简历'), [ka*='send_resume'], .chat-op .btn-resume").first
+        send_resume_btn = page.locator(".chat-op .btn-resume, button:has-text('发简历'), button:has-text('发送简历')").first
         if await send_resume_btn.is_visible():
             print("      📎 正在自动点击工具栏【发送附件简历】按钮...", flush=True)
             await send_resume_btn.click(timeout=3000)
             await asyncio.sleep(1.5)
-            sure_btn = page.locator(".dialog-wrap .btn-sure, button:has-text('确定'), button:has-text('发送简历')").first
+            sure_btn = page.locator(".dialog-wrap .btn-sure, button:has-text('确定')").first
             if await sure_btn.is_visible():
                 await sure_btn.click(timeout=3000)
                 print("      🎉 ✅ 附件简历已通过平台一键成功送达！", flush=True)
@@ -97,7 +97,7 @@ async def safe_evaluate(page, js_code, arg=None, retries=3):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (真正的物理鼠标点击与双快捷键发送)"""
+    """遍历聊天列表并自动回复 HR (纯自然拟人键盘输入与回车发送)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
     # 1. 扫描所有匹配的会话项
@@ -186,73 +186,44 @@ async def process_chat_inbox(page, fsm):
             print("      👉 正在激活输入框并进行物理级真机键盘打字...", flush=True)
             
             # 物理点击激活输入框
-            editor_loc = page.locator("#chat-input, div[contenteditable='true'], textarea, [role='textbox'], .chat-editor .chat-input, .chat-input").first
+            editor_loc = page.locator("#chat-input, div[contenteditable='true'], textarea, [role='textbox']").first
             try:
                 if await editor_loc.is_visible():
                     await editor_loc.click(force=True)
             except Exception:
                 pass
                 
-            await safe_evaluate(page, """() => {
-                const candidates = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, [role="textbox"], .chat-input');
-                for (let el of candidates) {
-                    el.focus();
-                    el.click();
-                }
-            }""")
             await asyncio.sleep(0.3)
             
             # 4. 键盘清空与逐字按键输入
             await page.keyboard.press("Control+A")
             await page.keyboard.press("Backspace")
             await asyncio.sleep(0.2)
-            await page.keyboard.type(reply_text, delay=20)
-            await asyncio.sleep(0.5)
+            await page.keyboard.type(reply_text, delay=25)
+            await asyncio.sleep(0.8)
             
-            # 5. DOM 备份注入（强制触发 Vue 数据绑定）
-            await safe_evaluate(page, f"""(msg) => {{
-                const candidates = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, .chat-input');
-                for (let el of candidates) {{
-                    if (el.isContentEditable) {{
-                        if (!el.innerText || el.innerText.trim() === '') {{
-                            el.innerText = msg;
-                            el.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
-                        }}
-                    }} else if (el.tagName === 'TEXTAREA') {{
-                        if (!el.value || el.value.trim() === '') {{
-                            el.value = msg;
-                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                        }}
-                    }}
-                }}
-            }}""", reply_text)
+            # 5. 纯物理回车与精准发送按钮（绝不误触其他链接）
+            print("      🚀 正在触发发送（敲击物理回车 / 点击发送按钮）...", flush=True)
             
-            # 6. 强制点击发送按钮 + 双快捷键击发
-            print("      🚀 正在触发发送动作（点击发送按钮 + Enter/Ctrl+Enter 击键）...", flush=True)
+            # 优先敲击物理 Enter 键发送
+            await page.keyboard.press("Enter")
+            await asyncio.sleep(1.0)
             
-            send_btn = page.locator("button.btn-send, button:has-text('发送'), [class*='btn-send'], .op-btn-send").first
-            try:
-                if await send_btn.is_visible():
-                    await send_btn.click(force=True)
-            except Exception:
-                pass
-                
-            await safe_evaluate(page, """() => {
-                const btns = document.querySelectorAll('button, a, div[role="button"], .btn-send, .op-btn-send');
-                for (let b of btns) {
-                    const txt = b.innerText ? b.innerText.trim() : '';
-                    if (txt === '发送' || (b.className && b.className.includes('btn-send'))) {
-                        b.click();
-                        break;
-                    }
-                }
+            # 如果输入框内依然有文字，精准点击右下角专有发送按钮
+            has_remaining = await safe_evaluate(page, """() => {
+                const ed = document.querySelector('#chat-input, div[contenteditable="true"], textarea');
+                return ed && ed.innerText && ed.innerText.trim().length > 0;
             }""")
             
-            await page.keyboard.press("Control+Enter")
-            await asyncio.sleep(0.3)
-            await page.keyboard.press("Enter")
-            await asyncio.sleep(2.5)
-            
+            if has_remaining:
+                send_btn = page.locator(".chat-op .btn-send, button.btn-send").first
+                try:
+                    if await send_btn.is_visible():
+                        await send_btn.click(force=True)
+                except Exception:
+                    pass
+                    
+            await asyncio.sleep(2.0)
             print(f"      🎉 ✅ 消息已打字并完成发送！", flush=True)
             
         except Exception as e:
