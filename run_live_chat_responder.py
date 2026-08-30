@@ -1,9 +1,10 @@
 """
 Rock-Solid Native Live Chat Responder for English CS HRs.
 Features:
-1. Zero navigation calls (Chrome launches directly to BOSS chat via CLI, eliminating about:blank entirely).
-2. Connects once over CDP, attaches to active BOSS tab, and keeps it permanent.
+1. Safe wait for DOM ready before evaluating.
+2. Resilient page state handling across Vue component rendering.
 3. Finite 3-round inspection with physical mouse clicks and dual Enter/Ctrl+Enter sending.
+4. Keeps Chrome open after completion so user can review the results.
 """
 import sys
 import os
@@ -79,25 +80,45 @@ async def try_send_resume_attachment(page):
     return False
 
 
+async def safe_evaluate(page, js_code, arg=None, retries=3):
+    """安全执行 evaluate，防止页面导航时上下文销毁"""
+    for attempt in range(retries):
+        try:
+            if arg is not None:
+                return await page.evaluate(js_code, arg)
+            else:
+                return await page.evaluate(js_code)
+        except Exception as e:
+            if attempt < retries - 1:
+                await asyncio.sleep(1.5)
+            else:
+                raise e
+
+
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (零跳转、原生打字与双快捷键发送)"""
+    """遍历聊天列表并自动回复 HR (抗导航中断 + 真实物理按键)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
     # 1. 扫描所有匹配的会话项
-    matched_convos = await page.evaluate("""() => {
-        const list = [];
-        const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
-        lis.forEach((li, idx) => {
-            const txt = li.innerText || '';
-            if (txt.includes('湖南') || txt.includes('怀化') || txt.includes('长沙')) return;
-            if (txt.includes('在线客服') || txt.includes('系统消息') || txt.includes('助手')) return;
-            if (txt.includes('翟') || txt.includes('启页') || txt.includes('欧阳') || txt.includes('览川') || txt.includes('诺博') || txt.includes('世臻') || txt.includes('英语') || txt.includes('英文')) {
-                list.push({ idx: idx, text: txt.replace(/\\n/g, ' | ').slice(0, 65) });
-            }
-        });
-        return list;
-    }""")
-    
+    matched_convos = []
+    try:
+        matched_convos = await safe_evaluate(page, """() => {
+            const list = [];
+            const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
+            lis.forEach((li, idx) => {
+                const txt = li.innerText || '';
+                if (txt.includes('湖南') || txt.includes('怀化') || txt.includes('长沙')) return;
+                if (txt.includes('在线客服') || txt.includes('系统消息') || txt.includes('助手')) return;
+                if (txt.includes('翟') || txt.includes('启页') || txt.includes('欧阳') || txt.includes('览川') || txt.includes('诺博') || txt.includes('世臻') || txt.includes('英语') || txt.includes('英文')) {
+                    list.push({ idx: idx, text: txt.replace(/\\n/g, ' | ').slice(0, 65) });
+                }
+            });
+            return list;
+        }""")
+    except Exception as e:
+        print(f"   ℹ️ 列表扫描状态: {e}", flush=True)
+        return
+        
     if not matched_convos:
         print("   暂未扫描到符合条件的英语客服 HR 目标，等待下轮巡检...", flush=True)
         return
@@ -122,7 +143,7 @@ async def process_chat_inbox(page, fsm):
             await asyncio.sleep(2.5)
             
             # 2. 读取聊天历史
-            convo_state = await page.evaluate("""() => {
+            convo_state = await safe_evaluate(page, """() => {
                 const items = document.querySelectorAll('.message-item, .chat-item, .chat-message, .item-myself, .item-friend, [class*="item-"]');
                 if (items.length === 0) return { lastIsMine: false, lastMsg: "", hrMsgs: [] };
                 
@@ -171,7 +192,7 @@ async def process_chat_inbox(page, fsm):
             except Exception:
                 pass
                 
-            await page.evaluate("""() => {
+            await safe_evaluate(page, """() => {
                 const candidates = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, [role="textbox"], .chat-input');
                 for (let el of candidates) {
                     el.focus();
@@ -188,7 +209,7 @@ async def process_chat_inbox(page, fsm):
             await asyncio.sleep(0.5)
             
             # 5. DOM 备份注入（强制触发 Vue 数据绑定）
-            await page.evaluate(f"""(msg) => {{
+            await safe_evaluate(page, f"""(msg) => {{
                 const candidates = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, .chat-input');
                 for (let el of candidates) {{
                     if (el.isContentEditable) {{
@@ -215,7 +236,7 @@ async def process_chat_inbox(page, fsm):
             except Exception:
                 pass
                 
-            await page.evaluate("""() => {
+            await safe_evaluate(page, """() => {
                 const btns = document.querySelectorAll('button, a, div[role="button"], .btn-send, .op-btn-send');
                 for (let b of btns) {
                     const txt = b.innerText ? b.innerText.trim() : '';
@@ -270,8 +291,16 @@ async def main():
         
         print(f"2. 🎉 成功直连桌面 Chrome 窗口！当前页面: {page.url}", flush=True)
         print("3. 正在等待消息中心数据加载就绪...", flush=True)
-        await asyncio.sleep(3.0)
         
+        # 宽容等待 Vue 消息中心 DOM 彻底稳定就绪（6 秒）
+        for _ in range(6):
+            await asyncio.sleep(1.0)
+            try:
+                if not page.is_closed():
+                    await page.wait_for_load_state("domcontentloaded", timeout=3000)
+            except Exception:
+                pass
+                
         print("\n" + "╔" + "═"*60 + "╗")
         print(f"║  🤖 【已开启：有限 {MAX_INSPECTION_ROUNDS} 轮自动应答【欧阳先生/翟先生】！】 ║")
         print("╚" + "═"*60 + "╝\n", flush=True)
@@ -279,7 +308,14 @@ async def main():
         for cycle in range(1, MAX_INSPECTION_ROUNDS + 1):
             print(f"--- [第 {cycle}/{MAX_INSPECTION_ROUNDS} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                await process_chat_inbox(page, fsm)
+                if not page.is_closed():
+                    await process_chat_inbox(page, fsm)
+                else:
+                    # 重新拉取活跃页面
+                    active_pages = [pg for pg in context.pages if not pg.is_closed()]
+                    if active_pages:
+                        page = active_pages[0]
+                        await process_chat_inbox(page, fsm)
             except Exception as e:
                 print(f"巡检通知: {e}", flush=True)
                 
