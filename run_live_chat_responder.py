@@ -1,12 +1,9 @@
 """
 Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
-Features:
-1. Strict Post-Dispatch Silence Rule: After sending a resume or message, remains 100% silent in all subsequent rounds until HR sends a new message.
-2. Complete 3-Step Official Resume Delivery Pipeline:
-   - Step 1: Clicks [同意] on official BOSS resume card ("我想要一份您的附件简历，您是否同意").
-   - Step 2: Clicks [发送在线简历] on selection modal.
-   - Step 3: Clicks [确认发送] / [发送] / [确定] on resume preview confirmation dialog.
-3. Safe Modal Cleanup & Zero about:blank.
+Rules:
+1. Resume Request: Clicks [同意] -> [发送在线简历] -> [确认发送/确定]. Does NOT send any text message. 100% silent afterwards.
+2. Text Question from HR: Sends exactly ONE tailored reply. 100% silent afterwards.
+3. Strict 1-for-1 Protocol: Never speaks unless HR speaks first.
 """
 import sys
 import os
@@ -47,9 +44,6 @@ def generate_english_cs_reply(hr_msg: str) -> str:
     """根据 HR 消息生成针对英语客服岗位的自然高情商回复"""
     msg_lower = hr_msg.lower()
     
-    if any(k in msg_lower for k in ["简历", "附件简历", "投递", "发一份", "发个简历", "发下简历", "发简历", "看看简历"]):
-        return "好的，我的个人求职简历已为您同意发送，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
-        
     if any(k in msg_lower for k in ["到岗", "离职", "什么时候", "在职", "时间"]):
         return "您好！我目前已处于离职状态，可根据贵司安排随时到岗开展工作。"
         
@@ -78,7 +72,7 @@ async def safe_evaluate(page, js_code, arg=None, retries=3):
 
 
 async def handle_resume_request_card(page):
-    """完整三步处理 HR 官方索要简历卡片及后续预览确认弹窗"""
+    """完整三步交付简历：[同意] -> [发送在线简历] -> [确认发送/确定]，发完绝不追加发任何文字"""
     approved_any = False
     try:
         # 第一步：寻找卡片上的“同意”按钮
@@ -98,7 +92,7 @@ async def handle_resume_request_card(page):
             approved_any = True
             
         # 第三步：处理预览简历并确认发送弹窗（【确认发送】/【立即发送】/【确定】/【发送】）
-        for _ in range(3):
+        for _ in range(4):
             confirm_btn = page.locator("button:has-text('确认发送'), button:has-text('立即发送'), .dialog-wrap button:has-text('发送'), .dialog-wrap .btn-sure, .dialog-wrap .btn-primary, button:has-text('确定')").first
             try:
                 if await confirm_btn.is_visible():
@@ -112,7 +106,7 @@ async def handle_resume_request_card(page):
             await asyncio.sleep(0.5)
             
         if approved_any:
-            print("      🎉 ✅ 完整三步流程确认完毕，简历已正式送达 HR！", flush=True)
+            print("      🎉 ✅ 完整三步流程确认完毕，简历已正式送达 HR！当前会话立即进入【绝对沉默静候状态】（不发任何额外文字消息）。", flush=True)
             return True
             
     except Exception as e:
@@ -121,7 +115,7 @@ async def handle_resume_request_card(page):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (严格一问一答，发了简历/消息后 100% 保持沉默等待 HR)"""
+    """遍历聊天列表并自动回复 HR (严格一问一答，发了简历或消息后 100% 保持沉默)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
     # 1. 扫描所有匹配的会话项
@@ -187,7 +181,6 @@ async def process_chat_inbox(page, fsm):
                     }
                 });
                 
-                // 检查卡片是否未处理
                 const agreeBtn = document.querySelector('button.btn-agree, .dialog-wrap .btn-sure') || 
                                  Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('同意'));
                 
@@ -199,23 +192,21 @@ async def process_chat_inbox(page, fsm):
                 };
             }""")
             
-            # 严格沉默守则：如果最新消息已是我方发送（包括刚刚发了简历/发了消息），且 HR 还没发新消息，100% 保持沉默！
+            # 优先处理“索要附件简历”卡片
+            resume_card_approved = await handle_resume_request_card(page)
+            if resume_card_approved:
+                # 发了简历之后不发任何文字消息，直接保持沉默静候 HR
+                continue
+                
+            # 严格沉默守则：如果最新消息已是我方发送，且 HR 还没发新消息，100% 保持沉默！
             if convo_state["lastIsMine"] and not convo_state["hasUnhandledCard"]:
                 print("      🤫 【严格沉默守则】最新一条消息/简历已由我方成功送达，HR 暂未回复新消息，我方 100% 保持沉默，静候 HR 发信。", flush=True)
                 continue
                 
-            # 完整三步处理“索要附件简历”卡片及后续预览确认弹窗
-            resume_card_approved = await handle_resume_request_card(page)
+            last_hr_msg = convo_state["hrMsgs"][-1] if convo_state["hrMsgs"] else ""
+            reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
+            print(f"      🤖 【生成针对性回复】: \"{reply_text}\"", flush=True)
             
-            # 如果刚刚完成了简历交付，发送一句极简礼貌确认，随后进入绝对沉默状态
-            if resume_card_approved:
-                reply_text = "好的，我的个人求职简历已为您同意发送，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
-                print(f"      🤖 【生成简历交付确认】: \"{reply_text}\"", flush=True)
-            else:
-                last_hr_msg = convo_state["hrMsgs"][-1] if convo_state["hrMsgs"] else ""
-                reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
-                print(f"      🤖 【生成针对性回复】: \"{reply_text}\"", flush=True)
-                
             # 3. 聚焦输入框并键入
             print("      👉 正在激活输入框并进行物理级真机键盘打字...", flush=True)
             
