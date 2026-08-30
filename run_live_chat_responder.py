@@ -1,9 +1,12 @@
 """
 Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
-Rules:
-1. Resume Request: Clicks [同意] -> [发送在线简历] -> [确认发送/确定]. Does NOT send any text message. 100% silent afterwards.
-2. Text Question from HR: Sends exactly ONE tailored reply. 100% silent afterwards.
-3. Strict 1-for-1 Protocol: Never speaks unless HR speaks first.
+Features:
+1. Exact 3-Step Resume Delivery Pipeline:
+   - Step 1: Clicks [同意] on official BOSS resume card ("我想要一份您的附件简历，您是否同意").
+   - Step 2: Clicks [发送在线简历] on type selection modal.
+   - Step 3: Clicks [保存并发送] on the resume preview modal (matching BOSS screenshot exactly).
+2. Zero text message sent after resume dispatch. 100% silent afterwards.
+3. Strict 1-for-1 Dialogue Protocol.
 """
 import sys
 import os
@@ -72,7 +75,7 @@ async def safe_evaluate(page, js_code, arg=None, retries=3):
 
 
 async def handle_resume_request_card(page):
-    """完整三步交付简历：[同意] -> [发送在线简历] -> [确认发送/确定]，发完绝不追加发任何文字"""
+    """完整三步交付简历：[同意] -> [发送在线简历] -> [保存并发送]，发完绝不追加发任何文字"""
     approved_any = False
     try:
         # 第一步：寻找卡片上的“同意”按钮
@@ -88,25 +91,25 @@ async def handle_resume_request_card(page):
         if await online_resume_card.is_visible():
             print("      🎯 识别到简历选择弹窗，正在自动点击【发送在线简历】...", flush=True)
             await online_resume_card.click(force=True)
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(1.8)
             approved_any = True
             
-        # 第三步：处理预览简历并确认发送弹窗（【确认发送】/【立即发送】/【确定】/【发送】）
-        for _ in range(4):
-            confirm_btn = page.locator("button:has-text('确认发送'), button:has-text('立即发送'), .dialog-wrap button:has-text('发送'), .dialog-wrap .btn-sure, .dialog-wrap .btn-primary, button:has-text('确定')").first
+        # 第三步：处理预览弹窗（精准锁定截图中的绿色按钮【保存并发送】）
+        for _ in range(5):
+            save_and_send_btn = page.locator("button:has-text('保存并发送'), [class*='btn']:has-text('保存并发送'), span:has-text('保存并发送'), .dialog-wrap button:has-text('保存并发送'), button:has-text('确认发送'), button:has-text('发送')").last
             try:
-                if await confirm_btn.is_visible():
-                    print("      📑 识别到简历预览确认弹窗，正在自动点击【确认发送】...", flush=True)
-                    await confirm_btn.click(force=True)
-                    await asyncio.sleep(1.5)
+                if await save_and_send_btn.is_visible():
+                    print("      📑 识别到简历预览弹窗，正在精准点击绿色按钮【保存并发送】...", flush=True)
+                    await save_and_send_btn.click(force=True)
+                    await asyncio.sleep(2.0)
                     approved_any = True
                     break
             except Exception:
                 pass
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.6)
             
         if approved_any:
-            print("      🎉 ✅ 完整三步流程确认完毕，简历已正式送达 HR！当前会话立即进入【绝对沉默静候状态】（不发任何额外文字消息）。", flush=True)
+            print("      🎉 ✅ 完整三步流程确认完毕，简历已通过【保存并发送】正式送达 HR！当前会话立即进入【绝对沉默静候状态】（不发任何额外文字消息）。", flush=True)
             return True
             
     except Exception as e:
@@ -181,8 +184,9 @@ async def process_chat_inbox(page, fsm):
                     }
                 });
                 
-                const agreeBtn = document.querySelector('button.btn-agree, .dialog-wrap .btn-sure') || 
-                                 Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('同意'));
+                // 检查卡片是否未处理（包括是否有未点击的同意或保存并发送按钮）
+                const agreeBtn = document.querySelector('button.btn-agree, .dialog-wrap .btn-sure, button:has-text("保存并发送")') || 
+                                 Array.from(document.querySelectorAll('button')).find(b => b.innerText && (b.innerText.includes('同意') || b.innerText.includes('保存并发送')));
                 
                 return {
                     lastIsMine: isMine,
@@ -195,7 +199,7 @@ async def process_chat_inbox(page, fsm):
             # 优先处理“索要附件简历”卡片
             resume_card_approved = await handle_resume_request_card(page)
             if resume_card_approved:
-                # 发了简历之后不发任何文字消息，直接保持沉默静候 HR
+                # 发了简历之后绝对不发任何文字消息，直接保持沉默静候 HR
                 continue
                 
             # 严格沉默守则：如果最新消息已是我方发送，且 HR 还没发新消息，100% 保持沉默！
