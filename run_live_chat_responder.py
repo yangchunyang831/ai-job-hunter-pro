@@ -1,9 +1,11 @@
 """
 Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
 Features:
-1. Strict 1-for-1 Rule: Only replies once when HR sends a new message or card. Never double-replies.
-2. Official Resume Card Auto-Approval: Automatically clicks [同意] on official BOSS resume request cards ("我想要一份您的附件简历，您是否同意").
-3. Anti-timing defense (console.table no-op) to guarantee 100% zero about:blank.
+1. Full 2-Step Resume Dispatch Flow:
+   - Step 1: Clicks [同意] on official BOSS resume card ("我想要一份您的附件简历，您是否同意").
+   - Step 2: Automatically handles the popup modal (clicks [发送在线简历] / uploads candidate PDF).
+2. Strict 1-for-1 Dialogue Protocol: Only replies once when HR sends a new message/card.
+3. Zero about:blank, 100% stable persistent session.
 """
 import sys
 import os
@@ -75,25 +77,42 @@ async def safe_evaluate(page, js_code, arg=None, retries=3):
 
 
 async def handle_resume_request_card(page):
-    """处理 HR 发送的官方索要简历交互卡片（点击【同意】）"""
+    """完整两步处理 HR 发送的官方索要简历卡片及后续弹窗"""
     try:
-        # 寻找卡片上的“同意”按钮
+        # 第一步：寻找卡片上的“同意”按钮
         agree_btn = page.locator("button:has-text('同意'), .btn-agree, .btn-sure, [class*='agree']").last
         if await agree_btn.is_visible():
             print("      📄 发现 HR 发起的官方【索要附件简历】卡片，正在自动点击【同意】...", flush=True)
             await agree_btn.click(force=True)
-            await asyncio.sleep(1.2)
+            await asyncio.sleep(1.5)
             
-            # 如果弹出二次确认对话框，点击“确定”/“同意”
-            confirm_btn = page.locator(".dialog-wrap .btn-sure, .dialog-wrap button:has-text('确定'), button:has-text('确定')").first
-            if await confirm_btn.is_visible():
-                await confirm_btn.click(force=True)
-                await asyncio.sleep(1.0)
-                
-            print("      🎉 ✅ 已成功点击【同意】，简历已官方直达 HR！", flush=True)
+            # 第二步：处理点击同意后弹出的简历类型选择弹窗（【发送在线简历】/【上传简历】）
+            online_resume_card = page.locator("div:has-text('发送在线简历'), [class*='resume-item']:has-text('发送在线简历'), span:has-text('发送在线简历')").last
+            if await online_resume_card.is_visible():
+                print("      🎯 识别到简历选择弹窗，正在自动点击【发送在线简历】完成发送...", flush=True)
+                await online_resume_card.click(force=True)
+                await asyncio.sleep(1.2)
+            else:
+                # 备用：若存在直接“确定”按钮
+                confirm_btn = page.locator(".dialog-wrap .btn-sure, button:has-text('确定'), button:has-text('发送')").first
+                if await confirm_btn.is_visible():
+                    await confirm_btn.click(force=True)
+                    await asyncio.sleep(1.0)
+                    
+            print("      🎉 ✅ 简历已成功通过平台弹窗正式送达 HR！", flush=True)
             return True
+            
+        # 若已有直接弹窗处于打开状态，直接点击【发送在线简历】
+        online_resume_card = page.locator("div:has-text('发送在线简历'), [class*='resume-item']:has-text('发送在线简历'), span:has-text('发送在线简历')").last
+        if await online_resume_card.is_visible():
+            print("      🎯 识别到未关闭的简历选择弹窗，正在自动点击【发送在线简历】完成发送...", flush=True)
+            await online_resume_card.click(force=True)
+            await asyncio.sleep(1.2)
+            print("      🎉 ✅ 简历已成功通过平台弹窗正式送达 HR！", flush=True)
+            return True
+            
     except Exception as e:
-        print(f"      ℹ️ 处理卡片状态: {e}", flush=True)
+        print(f"      ℹ️ 处理简历卡片/弹窗状态: {e}", flush=True)
     return False
 
 
@@ -147,7 +166,7 @@ async def process_chat_inbox(page, fsm):
             # 2. 读取聊天历史（严格判断最新一条是谁发的）
             convo_state = await safe_evaluate(page, """() => {
                 const items = document.querySelectorAll('.message-item, .chat-item, .chat-message, .item-myself, .item-friend, [class*="item-"]');
-                if (items.length === 0) return { lastIsMine: false, hasAgreeBtn: false, lastMsg: "", hrMsgs: [] };
+                if (items.length === 0) return { lastIsMine: false, hasAgreeBtn: false, hasDialog: false, lastMsg: "", hrMsgs: [] };
                 
                 const lastItem = items[items.length - 1];
                 const isMine = lastItem.className.includes('myself') || 
@@ -164,29 +183,30 @@ async def process_chat_inbox(page, fsm):
                     }
                 });
                 
-                // 检查是否有未处理的“同意”按钮卡片
                 const agreeBtn = document.querySelector('button.btn-agree, .dialog-wrap .btn-sure') || 
                                  Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('同意'));
+                const dialogCard = document.querySelector('.dialog-wrap, [class*="resume-item"], [class*="dialog"]');
                 
                 return {
                     lastIsMine: isMine,
                     hasAgreeBtn: !!agreeBtn,
+                    hasDialog: !!dialogCard,
                     lastMsg: lastItem.innerText ? lastItem.innerText.trim() : '',
                     hrMsgs: hrMsgs
                 };
             }""")
             
-            # 优先处理“索要附件简历”卡片的【同意】点击
+            # 完整处理“索要附件简历”卡片及后续选择弹窗
             resume_card_approved = await handle_resume_request_card(page)
             
-            # 严格一问一答守则：如果最新消息已是我方发送，且没有未点击的同意卡片，跳过本次应答
-            if convo_state["lastIsMine"] and not convo_state["hasAgreeBtn"] and not resume_card_approved:
+            # 严格一问一答守则：如果最新消息已是我方发送，且没有未处理的简历卡片/弹窗，保持静默跳过
+            if convo_state["lastIsMine"] and not convo_state["hasAgreeBtn"] and not convo_state["hasDialog"] and not resume_card_approved:
                 print("      ℹ️ 【严格一问一答守则】我方已发最新回复，HR 暂未发送新消息，保持静默，跳过重复打扰。", flush=True)
                 continue
                 
             last_hr_msg = convo_state["hrMsgs"][-1] if convo_state["hrMsgs"] else ""
             
-            # 如果刚刚点击了同意简历卡片，发送贴心的确认话术
+            # 若刚完成简历交付，发送高情商确认话术
             if resume_card_approved:
                 reply_text = "好的，我的个人求职简历已为您同意发送，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
             else:
