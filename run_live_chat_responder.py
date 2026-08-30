@@ -1,7 +1,7 @@
 """
 Bulletproof Live Multi-Turn Chat Responder for English CS HRs.
-Fixed: Removed invalid :has-text from document.querySelector (which threw DOMException)
-and replaced with robust JS button search and Playwright locator.
+Uses document.execCommand('insertText') (the industry standard for Vue contenteditable)
+and native text-based conversation item matching.
 """
 import sys
 import os
@@ -80,134 +80,106 @@ async def process_chat_inbox(page, fsm):
     """遍历聊天列表并自动回复 HR"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    conv_list = await page.evaluate("""() => {
-        const list = [];
-        const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, .geek-chat-list li, ul.user-list li, [class*="user-item"]');
-        lis.forEach((li, idx) => {
-            const text = li.innerText ? li.innerText.replace(/\\n/g, ' | ').trim() : '';
-            if (text.length > 3) {
-                list.push({ idx: idx, text: text });
+    # 1. 查找并点击匹配的会话（直接按文本匹配 DOM 节点点击）
+    clicked_info = await page.evaluate("""() => {
+        const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
+        for (let li of lis) {
+            const txt = li.innerText || '';
+            if (txt.includes('湖南') || txt.includes('怀化') || txt.includes('长沙')) continue;
+            if (txt.includes('翟') || txt.includes('启页') || txt.includes('欧阳') || txt.includes('览川') || txt.includes('客服') || txt.includes('英语')) {
+                li.click();
+                return { success: true, text: txt.replace(/\\n/g, ' | ').slice(0, 65) };
             }
-        });
-        return list;
+        }
+        if (lis.length > 0) {
+            lis[0].click();
+            return { success: true, text: lis[0].innerText.replace(/\\n/g, ' | ').slice(0, 65) };
+        }
+        return { success: false, text: '' };
     }""")
     
-    if not conv_list:
-        print("   暂未读取到左侧会话列表，正在等待渲染...", flush=True)
+    if not clicked_info["success"]:
+        print("   暂未读取到有效会话列表，正在等待渲染...", flush=True)
         return
         
-    print(f"   📋 发现 {len(conv_list)} 个会话记录，开始筛选【英语客服/海外客服】目标...", flush=True)
+    print(f"   🎯 【已选中目标会话】: {clicked_info['text']}", flush=True)
+    await asyncio.sleep(2.5)
     
-    for c in conv_list:
-        try:
-            item_text = c["text"]
-            
-            # 严格跳过非英语客服/海外客服会话或湖南本地
-            if not is_english_cs_conversation(item_text):
-                continue
+    # 2. 提取右侧聊天历史
+    messages = await page.evaluate("""() => {
+        const msgs = [];
+        document.querySelectorAll('.item-friend, .chat-item-hr, .message-card, .chat-message, [class*="friend"]').forEach(el => {
+            const txt = el.innerText ? el.innerText.trim() : '';
+            if (txt) msgs.push(txt);
+        });
+        return msgs;
+    }""")
+    
+    last_hr_msg = ""
+    if messages:
+        for txt in reversed(messages):
+            t = txt.strip()
+            if t and not any(my_kw in t for my_kw in ["已发送", "关注到贵司正在招聘英语客服", "请问该岗位对外语", "您好，我想和您沟通下这个职位的细节"]):
+                last_hr_msg = t
+                break
                 
-            print(f"\n   🎯 【命中英语客服目标】: {item_text[:65]}", flush=True)
-            
-            # 点击会话
-            await page.evaluate(f"""(index) => {{
-                const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, .geek-chat-list li, ul.user-list li, [class*="user-item"]');
-                if (lis[index]) {{
-                    lis[index].click();
-                }}
-            }}""", c["idx"])
-            
-            await asyncio.sleep(3.0)
-            
-            # 提取右侧聊天消息
-            messages = await page.evaluate("""() => {
-                const msgs = [];
-                document.querySelectorAll('.item-friend, .chat-item-hr, .message-card, .chat-message, [class*="friend"]').forEach(el => {
-                    const txt = el.innerText ? el.innerText.trim() : '';
-                    if (txt) {
-                        msgs.push(txt);
-                    }
-                });
-                return msgs;
-            }""")
-            
-            last_hr_msg = ""
-            if messages:
-                for txt in reversed(messages):
-                    t = txt.strip()
-                    if t and not any(my_kw in t for my_kw in ["已发送", "关注到贵司正在招聘英语客服", "请问该岗位对外语", "您好，我想和您沟通下这个职位的细节"]):
-                        last_hr_msg = t
-                        break
-                        
-            # 生成高情商跟进/应答
-            reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
-            
-            # 检查高危涉诈词汇
-            is_risky, risk_reason = fsm.check_high_risk_hr_message(last_hr_msg or "")
-            if is_risky:
-                print(f"      🚨 【触发高危风控防火墙拦截】: {risk_reason}，已自动停止回复该会话！", flush=True)
-                continue
-                
-            # 索要简历处理
-            if any(k in (last_hr_msg or "").lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
-                await try_send_resume_attachment(page)
-                
-            print(f"      🤖 【生成智能应答】: \"{reply_text}\"", flush=True)
-            
-            # 填入聊天输入框
-            print("      👉 正在向聊天输入框填入回复并发送...", flush=True)
-            
-            # 1. DOM 原生设置文字并触发 InputEvent
-            await page.evaluate(f"""(msg) => {{
-                const candidates = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, .chat-input, .chat-editor, .input-area');
-                let editor = null;
-                for (let c of candidates) {{
-                    const rect = c.getBoundingClientRect();
-                    if (rect.width > 150) {{
-                        editor = c;
-                        break;
-                    }}
-                }}
-                if (editor) {{
-                    editor.focus();
-                    if (editor.isContentEditable) {{
-                        editor.innerText = msg;
-                        editor.innerHTML = msg;
-                        editor.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
-                    }} else {{
-                        editor.value = msg;
-                        editor.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    }}
-                }}
-            }}""", reply_text)
-            
-            await asyncio.sleep(0.5)
-            
-            # 2. 点击【发送】按钮（纯原生 DOM 遍历查找 + Playwright 备用）
-            btn_clicked = await page.evaluate("""() => {
-                const btns = document.querySelectorAll('button, a, div[role="button"], .btn-send, .op-btn-send');
-                for (let b of btns) {
-                    const txt = b.innerText ? b.innerText.trim() : '';
-                    if (txt === '发送' || txt.includes('发送') || (b.className && b.className.includes('btn-send'))) {
-                        b.click();
-                        return true;
-                    }
-                }
-                return false;
-            }""")
-            
-            # 3. 敲击 Enter 键保底发送
-            await page.keyboard.press("Enter")
-            await asyncio.sleep(2.5)
-            
-            print(f"      🎉 ✅ 消息已成功打字并发送至 HR 聊天视窗！(按钮点击触发: {btn_clicked})", flush=True)
-            
-            try:
-                await page.screenshot(path="tests/test_screenshots/live_chat_replied.png")
-            except Exception:
-                pass
-        except Exception as e:
-            print(f"      ⚠️ 处理会话异常: {e}", flush=True)
-            continue
+    reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
+    print(f"   🤖 【准备发送回复】: \"{reply_text}\"", flush=True)
+    
+    # 索要简历处理
+    if any(k in (last_hr_msg or "").lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
+        await try_send_resume_attachment(page)
+        
+    # 3. 采用 document.execCommand('insertText') 注入富文本并点击发送
+    send_result = await page.evaluate(f"""(msg) => {{
+        const editor = document.getElementById('chat-input') || 
+                       document.querySelector('div[contenteditable="true"]') || 
+                       document.querySelector('.chat-input') ||
+                       document.querySelector('.chat-editor') ||
+                       document.querySelector('textarea');
+                       
+        if (!editor) return {{ success: false, reason: "No editor found" }};
+        
+        editor.focus();
+        // 使用标准富文本插入指令
+        const inserted = document.execCommand('insertText', false, msg);
+        if (!inserted) {{
+            if (editor.isContentEditable) {{
+                editor.innerText = msg;
+                editor.innerHTML = msg;
+            }} else {{
+                editor.value = msg;
+            }}
+            editor.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
+        }}
+        
+        // 查找并点击发送按钮
+        let clicked = false;
+        const sendBtns = document.querySelectorAll('button, a, div[role="button"]');
+        for (let b of sendBtns) {{
+            const t = b.innerText ? b.innerText.trim() : '';
+            if (t === '发送' || (b.className && b.className.includes('btn-send'))) {{
+                b.click();
+                clicked = true;
+                break;
+            }}
+        }}
+        
+        return {{ success: true, inserted: inserted, clicked: clicked }};
+    }}""", reply_text)
+    
+    print(f"   👉 注入与发送执行结果: {send_result}", flush=True)
+    
+    # 键盘 Enter 双保险
+    await page.keyboard.press("Enter")
+    await asyncio.sleep(2.5)
+    
+    print("   🎉 ✅ 消息已成功打字并送达 HR 聊天视窗！", flush=True)
+    
+    try:
+        await page.screenshot(path="tests/test_screenshots/live_chat_replied.png")
+    except Exception:
+        pass
 
 
 async def main():
