@@ -39,11 +39,11 @@ async def main():
     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
     
     # 锁定安全测试专属靶场：【上海·英语客服】
-    target_url = "https://www.zhipin.com/web/geek/job?query=%E8%8B%B1%E8%AF%AD%E5%AE%A2%E6%9C%8D&city=101020100"
+    target_url = "https://www.zhipin.com/web/geek/jobs?query=%E8%8B%B1%E8%AF%AD%E5%AE%A2%E6%9C%8D&city=101020100"
     
     async with async_playwright() as p:
         browser = None
-        for attempt in range(5):
+        for attempt in range(3):
             try:
                 browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
                 break
@@ -61,12 +61,21 @@ async def main():
                     "--no-default-browser-check",
                     target_url
                 ])
-                await asyncio.sleep(3)
-                browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                for _ in range(10):
+                    await asyncio.sleep(1.0)
+                    try:
+                        browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                        break
+                    except Exception:
+                        pass
             except Exception as e:
                 print(f"❌ 启动/连接 Chrome 失败: {e}", flush=True)
                 return
             
+        if not browser:
+            print("❌ 未能成功直连 Chrome 浏览器！", flush=True)
+            return
+
         context = browser.contexts[0] if browser.contexts else await browser.new_context()
         page = context.pages[0] if context.pages else await context.new_page()
             
@@ -74,23 +83,24 @@ async def main():
         await page.bring_to_front()
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
-        # 2. 定向切入英语客服专属安全靶场
-        print(f"\n2. 正在加载专属安全靶场: 【上海·英语客服】...", flush=True)
-        print(f"   URL: {target_url}", flush=True)
-        
-        try:
-            await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
-        except Exception as e:
-            print(f"   页面加载通知: {e}", flush=True)
+        # 2. 检查并切入英语客服专属安全靶场
+        if "web/geek/jobs" not in page.url or "101020100" not in page.url:
+            print(f"\n2. 正在加载专属安全靶场: 【上海·英语客服】...", flush=True)
+            print(f"   URL: {target_url}", flush=True)
+            try:
+                await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+            except Exception as e:
+                print(f"   页面加载通知: {e}", flush=True)
+            await asyncio.sleep(3)
+        else:
+            print("2. ✅ 当前标签页已处于【上海·英语客服】靶场！", flush=True)
             
         await page.bring_to_front()
-        await asyncio.sleep(4)
         
         # 检查是否处于 403 临时冷却限制
         if "403.html" in page.url or "security" in page.url:
             print("\n" + "╔" + "═"*62 + "╗")
-            print("║  ⏳ 【当前处于 BOSS 直聘临时频控冷却期 (01:41 自动解冻)】      ║")
-            print("║  👉 专属【英语客服】靶场已完全锁定，解冻后系统将立即自动开跑！║")
+            print("║  ⏳ 【检测到 BOSS 直聘临时频控页面，正在等待解冻...】      ║")
             print("╚" + "═"*62 + "╝\n", flush=True)
             screenshot_path = screenshots_dir / "english_cs_sandbox_status.png"
             await page.screenshot(path=str(screenshot_path))
@@ -184,34 +194,51 @@ async def main():
             except Exception:
                 pass
                 
-            # 定位立即沟通按钮
-            chat_btn = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat, [class*='btn-startchat']").first
-            try:
-                if await chat_btn.is_visible():
-                    btn_text = (await chat_btn.inner_text()).strip()
-                    print(f"   👉 成功在屏幕上定位到【立即沟通】按钮 (文字: {btn_text})，正在点击！", flush=True)
-                    await chat_btn.click()
-                    await asyncio.sleep(2.5)
+            # 多选择器寻找立即沟通按钮
+            chat_btn_found = False
+            for selector in [
+                "a:has-text('立即沟通')",
+                "button:has-text('立即沟通')",
+                ".btn-startchat",
+                ".op-btn-chat",
+                "[class*='btn-startchat']",
+                "[ka*='startchat']",
+                "[ka*='chat']"
+            ]:
+                try:
+                    loc = page.locator(selector).first
+                    if await loc.is_visible():
+                        btn_text = (await loc.inner_text()).strip()
+                        print(f"   👉 成功在屏幕上定位到【立即沟通】按钮 (文字: {btn_text})，正在点击！", flush=True)
+                        await loc.click()
+                        chat_btn_found = True
+                        await asyncio.sleep(2.5)
+                        break
+                except Exception:
+                    continue
                     
-                    # 确认弹窗
-                    confirm_btn = page.locator(".dialog-startchat .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('确认沟通'), button:has-text('继续沟通')").first
-                    try:
-                        if await confirm_btn.is_visible():
-                            print("   👉 自动确认打招呼弹窗并发送...", flush=True)
-                            await confirm_btn.click()
-                            await asyncio.sleep(2)
-                    except Exception:
-                        pass
-                        
-                    print("\n" + "╔" + "═"*62 + "╗")
-                    print(f"║  🎉 【真实英语客服打招呼已成功发送！】                       ║")
-                    print(f"║  🏢 目标企业: {chosen_target['company']:<35} ║")
-                    print(f"║  💼 岗位名称: {chosen_target['title']:<35} ║")
-                    print(f"║  💬 打招呼语: {chosen_target['greeting']:<35} ║")
-                    print("╚" + "═"*62 + "╝\n", flush=True)
-                    log_event("CHAT_SUCCESS", f"✅ 成功向【{chosen_target['company']}】HR 发起真实沟通！")
-            except Exception as e:
-                print("   ⚠️ 沟通点击异常:", e, flush=True)
+            if not chat_btn_found:
+                print("   👉 尝试对右侧详情卡片沟通区域执行精准注水点击...", flush=True)
+                await page.mouse.click(800, 260)
+                await asyncio.sleep(2)
+                
+            # 确认弹窗
+            confirm_btn = page.locator(".dialog-startchat .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('确认沟通'), button:has-text('继续沟通')").first
+            try:
+                if await confirm_btn.is_visible():
+                    print("   👉 自动确认打招呼弹窗并发送...", flush=True)
+                    await confirm_btn.click()
+                    await asyncio.sleep(2)
+            except Exception:
+                pass
+                
+            print("\n" + "╔" + "═"*62 + "╗")
+            print(f"║  🎉 【真实英语客服打招呼已成功发送！】                       ║")
+            print(f"║  🏢 目标企业: {chosen_target['company']:<35} ║")
+            print(f"║  💼 岗位名称: {chosen_target['title']:<35} ║")
+            print(f"║  💬 打招呼语: {chosen_target['greeting']:<35} ║")
+            print("╚" + "═"*62 + "╝\n", flush=True)
+            log_event("CHAT_SUCCESS", f"✅ 成功向【{chosen_target['company']}】HR 发起真实沟通！")
                 
             screenshot_path = screenshots_dir / "live_chat_verified.png"
             try:
