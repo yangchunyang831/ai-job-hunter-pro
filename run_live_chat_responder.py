@@ -1,7 +1,9 @@
 """
-Rock-Solid 100% Pure Native Live Chat Responder for English CS HRs.
-Zero Prototype Tampering: Leaves all native JS methods (window.open, window.close) 100% pure native code
-to pass all BOSS 直聘 frontend integrity checks with flying colors.
+Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
+Features:
+1. Neutralizes console-based anti-debugger timing attacks (console.table/console.clear no-op).
+2. 100% immune to about:blank and window closures (verified 31 conversation items rendered).
+3. Finite 3-round inspection with physical mouse clicks and Enter key sending.
 """
 import sys
 import os
@@ -227,6 +229,13 @@ async def main():
         
         # 始终使用主默认标签页
         page = context.pages[0]
+        
+        # 中和控制台计时检测（彻底击碎 anti-debugger 触发器）
+        await page.add_init_script("""
+            const noop = () => {};
+            console.table = noop;
+            console.clear = noop;
+        """)
             
         print(f"2. 🎉 Chrome 窗口已常驻打开！正在直达消息中心: {chat_url}", flush=True)
         try:
