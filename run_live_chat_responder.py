@@ -1,9 +1,10 @@
 """
-Bulletproof Multi-Turn Live Chat Responder for English CS HRs.
-Architecture:
-1. Pure JS evaluation & coordinate clicks (100% immune to stale element handles / DOM context destruction).
-2. Auto-reconnection loop: If Chrome is closed or disconnected, automatically reconnects.
-3. Automatically dispatches resume: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf'.
+Dedicated Multi-Turn Live Chat Responder for English CS HRs.
+Features:
+1. Works seamlessly in both Desktop GUI and Background automation.
+2. Robust conversation clicking with timeout & force flag.
+3. Automatically responds with intelligent multi-turn dialogue.
+4. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested by HR!
 """
 import sys
 import os
@@ -38,8 +39,8 @@ def generate_english_cs_reply(hr_msg: str) -> str:
     if any(k in msg_lower for k in ["英语", "外语", "口语", "四级", "六级", "专八", "熟练", "水平", "流畅", "沟通能力"]):
         return "您好！我的英语具备良好的听说读写能力，能够熟练使用英文进行邮件往来、工单处理及日常客户线上沟通，日常业务沟通无障碍。请问贵司该岗位主要对接哪些区域的客户呢？"
         
-    if any(k in msg_lower for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我"]):
-        return "好的，我的个人简历【杨春_个人求职简历.pdf】已为您发送，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
+    if any(k in msg_lower for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
+        return "好的，我的个人求职简历【杨春_个人求职简历.pdf】已为您发送，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
         
     if any(k in msg_lower for k in ["到岗", "离职", "什么时候", "在职", "时间"]):
         return "您好！我目前已处于离职状态，可根据贵司安排随时到岗开展工作。"
@@ -62,11 +63,11 @@ async def try_send_resume_attachment(page):
         send_resume_btn = page.locator("button:has-text('发简历'), button:has-text('发送简历'), [ka*='send_resume'], .chat-op .btn-resume").first
         if await send_resume_btn.is_visible():
             print("      📎 正在自动点击工具栏【发送附件简历】按钮...", flush=True)
-            await send_resume_btn.click()
+            await send_resume_btn.click(timeout=3000)
             await asyncio.sleep(1.5)
             sure_btn = page.locator(".dialog-wrap .btn-sure, button:has-text('确定'), button:has-text('发送简历')").first
             if await sure_btn.is_visible():
-                await sure_btn.click()
+                await sure_btn.click(timeout=3000)
                 print("      🎉 ✅ 附件简历已通过平台一键成功送达！", flush=True)
                 await asyncio.sleep(1.5)
                 return True
@@ -84,67 +85,46 @@ async def try_send_resume_attachment(page):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (基于 JS 内存数据与坐标定位，绝对不产生过期异常)"""
+    """遍历聊天列表并自动回复 HR"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    # 1. 一次性获取左侧会话坐标与文本信息
-    convs = await page.evaluate("""() => {
-        const res = [];
-        document.querySelectorAll('.user-list-content li, .chat-user-list li, .geek-chat-list li, ul.user-list li, .main-list li').forEach((el, index) => {
-            const rect = el.getBoundingClientRect();
-            const text = el.innerText ? el.innerText.replace(/\\n/g, ' | ').trim() : '';
-            if (text.length > 3 && rect.width > 0 && rect.height > 0) {
-                res.push({
-                    index: index,
-                    text: text,
-                    x: rect.x + rect.width / 2,
-                    y: rect.y + rect.height / 2
-                });
-            }
-        });
-        return res;
-    }""")
+    list_loc = page.locator(".user-list-content li, .chat-user-list li, .geek-chat-list li, ul.user-list li, .main-list li")
+    total_convs = await list_loc.count()
     
-    if not convs:
+    if total_convs == 0:
         print("   暂未读取到左侧会话列表，正在等待渲染...", flush=True)
         return
         
-    print(f"   📋 发现 {len(convs)} 个历史对话记录，开始检查 HR 互动...", flush=True)
+    print(f"   📋 发现 {total_convs} 个历史对话记录，开始检查 HR 互动...", flush=True)
     
-    for c in convs[:8]:
+    for idx in range(min(total_convs, 10)):
         try:
-            item_text = c["text"]
-            
+            item = list_loc.nth(idx)
+            item_text = (await item.inner_text()).strip().replace("\n", " | ")
+            if not item_text:
+                continue
+                
             # 严格跳过湖南本地
             if any(loc in item_text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲"]):
                 continue
                 
-            print(f"\n   👉 [会话 {c['index']+1}] {item_text[:70]}", flush=True)
+            print(f"\n   👉 [会话 {idx+1}] {item_text[:70]}", flush=True)
             
-            # 点击会话中心坐标
-            await page.mouse.click(c["x"], c["y"])
+            # 点击展开右侧聊天窗口
+            await item.click(timeout=4000, force=True)
             await asyncio.sleep(2.0)
             
-            # 提取右侧聊天记录
-            chat_messages = await page.evaluate("""() => {
-                const msgs = [];
-                document.querySelectorAll('.item-friend, .chat-item-hr, .message-card, [class*="friend"]').forEach(el => {
-                    const txt = el.innerText ? el.innerText.trim() : '';
-                    if (txt) {
-                        msgs.push(txt);
-                    }
-                });
-                return msgs;
-            }""")
-            
-            if not chat_messages:
+            msg_texts = await page.locator(".item-friend, .chat-item-hr, .message-card, .chat-message, [class*='friend']").all_inner_texts()
+            if not msg_texts:
+                print("      ℹ️ 该会话暂无 HR 历史消息。", flush=True)
                 continue
                 
-            # 获取 HR 发送的最后一条消息
+            # 查找最后一条 HR 发送的消息
             last_hr_msg = ""
-            for txt in reversed(chat_messages):
-                if txt and not any(my_kw in txt for my_kw in ["已发送", "关注到贵司正在招聘英语客服", "请问该岗位对外语"]):
-                    last_hr_msg = txt
+            for txt in reversed(msg_texts):
+                t = txt.strip()
+                if t and not any(my_kw in t for my_kw in ["已发送", "关注到贵司正在招聘英语客服", "请问该岗位对外语"]):
+                    last_hr_msg = t
                     break
                     
             if not last_hr_msg:
@@ -160,16 +140,16 @@ async def process_chat_inbox(page, fsm):
                 continue
                 
             # 索要简历处理
-            if any(k in last_hr_msg.lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我"]):
+            if any(k in last_hr_msg.lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
                 await try_send_resume_attachment(page)
                 
             reply_text = generate_english_cs_reply(last_hr_msg)
             print(f"      🤖 【生成智能应答】: \"{reply_text}\"", flush=True)
             
-            # 填入输入框发送
+            # 填入聊天输入框并回车发送
             input_box = page.locator(".chat-input, textarea, .chat-editor, [contenteditable='true'], .input-area").first
             if await input_box.is_visible():
-                await input_box.click()
+                await input_box.click(timeout=3000)
                 await input_box.fill(reply_text)
                 await page.keyboard.press("Enter")
                 print("      🎉 ✅ 消息已成功发送至 HR！", flush=True)
@@ -205,37 +185,20 @@ async def main():
             except Exception:
                 await asyncio.sleep(1.0)
                 
-        if not browser:
+        if browser:
+            context = browser.contexts[0]
+            pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
+            page = pages[0] if pages else context.pages[0]
+        else:
             print("1. 正在启动 Chrome 浏览器并进入消息聊天室...", flush=True)
-            subprocess.Popen([
-                chrome_path,
-                "--remote-debugging-port=9222",
-                f"--user-data-dir={user_data_dir}",
-                "--no-first-run",
-                "--no-default-browser-check",
-                chat_url
-            ])
-            for _ in range(12):
-                await asyncio.sleep(1.0)
-                try:
-                    browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-                    break
-                except Exception:
-                    pass
-
-        if not browser:
-            print("❌ 无法直连 Chrome，请双击 start_auto_chat_responder.bat 后重试！", flush=True)
-            return
-
-        context = browser.contexts[0]
-        page = None
-        for p_cand in context.pages:
-            if "zhipin.com" in p_cand.url:
-                page = p_cand
-                break
-        if not page:
+            context = await p.chromium.launch_persistent_context(
+                user_data_dir=user_data_dir,
+                headless=False,
+                channel="chrome",
+                args=["--remote-debugging-port=9222", "--no-first-run", "--no-default-browser-check"]
+            )
             page = context.pages[0] if context.pages else await context.new_page()
-            
+
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
         # 导航与彻底水化
@@ -265,11 +228,6 @@ async def main():
         while True:
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                # 重新校验 context
-                if not browser.is_connected():
-                    browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-                    context = browser.contexts[0]
-                    
                 pages = [pg for pg in context.pages if not pg.is_closed()]
                 if pages:
                     page = pages[0]
