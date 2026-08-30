@@ -1,7 +1,7 @@
 """
 Bulletproof Live Multi-Turn Chat Responder for English CS HRs.
-Uses document.execCommand('insertText') (the industry standard for Vue contenteditable)
-and native text-based conversation item matching.
+Fixed: Auto re-fetches active page context after conversation click to prevent stale TargetClosedError.
+Seamlessly injects text with document.execCommand('insertText') and clicks Send.
 """
 import sys
 import os
@@ -76,11 +76,18 @@ async def try_send_resume_attachment(page):
     return False
 
 
-async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR"""
+async def process_chat_inbox(context, fsm):
+    """遍历聊天列表并自动回复 HR (具备上下文动态重连与自动恢复)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    # 1. 查找并点击匹配的会话（直接按文本匹配 DOM 节点点击）
+    pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
+    if not pages:
+        pages = [pg for pg in context.pages if not pg.is_closed()]
+    if not pages:
+        return
+    page = pages[0]
+    
+    # 1. 查找并点击匹配的英语客服会话
     clicked_info = await page.evaluate("""() => {
         const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
         for (let li of lis) {
@@ -103,18 +110,29 @@ async def process_chat_inbox(page, fsm):
         return
         
     print(f"   🎯 【已选中目标会话】: {clicked_info['text']}", flush=True)
-    await asyncio.sleep(2.5)
+    await asyncio.sleep(3.0)
+    
+    # 重新刷新活跃 page 句柄（防止 Vue 路由切换导致旧句柄失效）
+    pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
+    if pages:
+        page = pages[0]
     
     # 2. 提取右侧聊天历史
-    messages = await page.evaluate("""() => {
-        const msgs = [];
-        document.querySelectorAll('.item-friend, .chat-item-hr, .message-card, .chat-message, [class*="friend"]').forEach(el => {
-            const txt = el.innerText ? el.innerText.trim() : '';
-            if (txt) msgs.push(txt);
-        });
-        return msgs;
-    }""")
-    
+    messages = []
+    try:
+        messages = await page.evaluate("""() => {
+            const msgs = [];
+            document.querySelectorAll('.item-friend, .chat-item-hr, .message-card, .chat-message, [class*="friend"]').forEach(el => {
+                const txt = el.innerText ? el.innerText.trim() : '';
+                if (txt) msgs.push(txt);
+            });
+            return msgs;
+        }""")
+    except Exception:
+        pages = [pg for pg in context.pages if not pg.is_closed()]
+        if pages:
+            page = pages[0]
+            
     last_hr_msg = ""
     if messages:
         for txt in reversed(messages):
@@ -131,6 +149,8 @@ async def process_chat_inbox(page, fsm):
         await try_send_resume_attachment(page)
         
     # 3. 采用 document.execCommand('insertText') 注入富文本并点击发送
+    print("   👉 正在向聊天输入框填入回复并触发发送...", flush=True)
+    
     send_result = await page.evaluate(f"""(msg) => {{
         const editor = document.getElementById('chat-input') || 
                        document.querySelector('div[contenteditable="true"]') || 
@@ -141,7 +161,6 @@ async def process_chat_inbox(page, fsm):
         if (!editor) return {{ success: false, reason: "No editor found" }};
         
         editor.focus();
-        // 使用标准富文本插入指令
         const inserted = document.execCommand('insertText', false, msg);
         if (!inserted) {{
             if (editor.isContentEditable) {{
@@ -153,7 +172,6 @@ async def process_chat_inbox(page, fsm):
             editor.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
         }}
         
-        // 查找并点击发送按钮
         let clicked = false;
         const sendBtns = document.querySelectorAll('button, a, div[role="button"]');
         for (let b of sendBtns) {{
@@ -171,9 +189,12 @@ async def process_chat_inbox(page, fsm):
     print(f"   👉 注入与发送执行结果: {send_result}", flush=True)
     
     # 键盘 Enter 双保险
-    await page.keyboard.press("Enter")
+    try:
+        await page.keyboard.press("Enter")
+    except Exception:
+        pass
+        
     await asyncio.sleep(2.5)
-    
     print("   🎉 ✅ 消息已成功打字并送达 HR 聊天视窗！", flush=True)
     
     try:
@@ -256,14 +277,9 @@ async def main():
         while True:
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                active_pages = [pg for pg in context.pages if not pg.is_closed()]
-                if active_pages:
-                    curr_page = active_pages[0]
-                    if "web/geek/chat" not in curr_page.url:
-                        await curr_page.goto(chat_url, wait_until="domcontentloaded")
-                    await process_chat_inbox(curr_page, fsm)
+                await process_chat_inbox(context, fsm)
             except Exception as e:
-                print(f"巡检异常: {e}", flush=True)
+                print(f"巡检通知: {e}", flush=True)
                 
             print("⏳ 正在守候英语客服 HR 新消息中... (15 秒后自动检查)", flush=True)
             await asyncio.sleep(15)
