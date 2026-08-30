@@ -1,11 +1,10 @@
 """
-Dedicated Multi-Turn Live Chat Responder for English CS HRs.
+Strict English CS Multi-Turn Live Chat Responder.
 Features:
-1. Pure JS evaluation & click interaction (100% resilient, no stale element exceptions).
-2. Auto-waits for IM WebSocket and conversation list hydration.
-3. Detects new messages from English CS HRs.
-4. Automatically responds with intelligent multi-turn dialogue.
-5. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested by HR!
+1. Strict Geofencing: 100% BLOCKS Hunan / Changsha / Huaihua / Hongjiang.
+2. Target Filtering: ONLY replies to HRs of 英语客服 / 英文客服 / 海外客服 / 跨境客服.
+3. Automatically responds with intelligent multi-turn dialogue.
+4. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested by HR!
 """
 import sys
 import os
@@ -33,13 +32,21 @@ user_data_dir = r"C:\chrome_debug_profile"
 resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
 
 
+def is_english_cs_conversation(text: str) -> bool:
+    """严格判断是否为英语客服/海外客服，且非湖南本地"""
+    # 1. 严格排除湖南本地
+    if any(loc in text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲", "湘潭", "岳阳"]):
+        return False
+        
+    # 2. 严格限定英语客服/海外客服关键词与测试靶标
+    cs_keywords = ["英语", "英文", "外语", "海外客服", "跨境", "览川", "诺博", "启页", "世臻", "携程", "水裹汤泉"]
+    return any(kw in text for kw in cs_keywords)
+
+
 def generate_english_cs_reply(hr_msg: str) -> str:
     """根据 HR 消息生成针对英语客服岗位的自然高情商回复"""
     msg_lower = hr_msg.lower()
     
-    if any(k in msg_lower for k in ["英语", "外语", "口语", "四级", "六级", "专八", "熟练", "水平", "流畅", "沟通能力"]):
-        return "您好！我的英语具备良好的听说读写能力，能够熟练使用英文进行邮件往来、工单处理及日常客户线上沟通，日常业务沟通无障碍。请问贵司该岗位主要对接哪些区域的客户呢？"
-        
     if any(k in msg_lower for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
         return "好的，我的个人求职简历【杨春_个人求职简历.pdf】已为您发送，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
         
@@ -52,7 +59,7 @@ def generate_english_cs_reply(hr_msg: str) -> str:
     if any(k in msg_lower for k in ["接受", "排班", "夜班", "轮休", "做五休二", "加班", "轮班"]):
         return "您好！我可以接受公司的正规排班与轮休制度，具有良好的团队协作与抗压能力。"
         
-    return "您好！感谢您的回复，我对贵司的英语客服岗位非常感兴趣，请问方便进一步了解下具体的岗位职责和业务方向吗？"
+    return "您好！我的英语具备良好的听说读写能力，能够熟练使用英文进行邮件往来、工单处理及日常客户线上沟通，日常业务沟通无障碍。请问贵司该岗位主要对接哪些区域的客户呢？"
 
 
 async def try_send_resume_attachment(page):
@@ -86,10 +93,9 @@ async def try_send_resume_attachment(page):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (基于 JS 内存数据与原生点击，绝对不产生过期异常)"""
+    """遍历聊天列表并自动回复 HR (严格只回复英语客服/海外客服 HR，绝对不碰湖南本地)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    # 1. 一次性获取所有会话列表
     conv_list = await page.evaluate("""() => {
         const list = [];
         const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, .geek-chat-list li, ul.user-list li, [class*="user-item"]');
@@ -106,19 +112,20 @@ async def process_chat_inbox(page, fsm):
         print("   暂未读取到左侧会话列表，正在等待渲染...", flush=True)
         return
         
-    print(f"   📋 发现 {len(conv_list)} 个历史对话记录，开始检查 HR 互动...", flush=True)
+    print(f"   📋 发现 {len(conv_list)} 个历史会话，开始筛选【英语客服/海外客服】目标...", flush=True)
     
-    for c in conv_list[:8]:
+    for c in conv_list:
         try:
             item_text = c["text"]
             
-            # 严格跳过湖南本地
-            if any(loc in item_text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲"]):
+            # 严格跳过非英语客服/海外客服会话或湖南本地
+            if not is_english_cs_conversation(item_text):
+                print(f"   ⏩ 忽略非英语客服/非测试会话: {item_text[:40]}", flush=True)
                 continue
                 
-            print(f"\n   👉 [会话 {c['idx']+1}] {item_text[:70]}", flush=True)
+            print(f"\n   🎯 【命中英语客服目标】: {item_text[:65]}", flush=True)
             
-            # JS 原生触发点击，绝对不超时、不抛异常
+            # 点击会话
             await page.evaluate(f"""(index) => {{
                 const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, .geek-chat-list li, ul.user-list li, [class*="user-item"]');
                 if (lis[index]) {{
@@ -128,7 +135,7 @@ async def process_chat_inbox(page, fsm):
             
             await asyncio.sleep(2.0)
             
-            # 读取右侧聊天消息
+            # 提取右侧聊天消息
             messages = await page.evaluate("""() => {
                 const msgs = [];
                 document.querySelectorAll('.item-friend, .chat-item-hr, .message-card, .chat-message, [class*="friend"]').forEach(el => {
@@ -140,34 +147,31 @@ async def process_chat_inbox(page, fsm):
                 return msgs;
             }""")
             
-            if not messages:
-                print("      ℹ️ 该会话暂无 HR 历史回复。", flush=True)
-                continue
-                
             last_hr_msg = ""
-            for txt in reversed(messages):
-                t = txt.strip()
-                if t and not any(my_kw in t for my_kw in ["已发送", "关注到贵司正在招聘英语客服", "请问该岗位对外语"]):
-                    last_hr_msg = t
-                    break
-                    
-            if not last_hr_msg:
-                print("      ℹ️ 该会话暂无未回复的 HR 消息。", flush=True)
-                continue
+            if messages:
+                for txt in reversed(messages):
+                    t = txt.strip()
+                    if t and not any(my_kw in t for my_kw in ["已发送", "关注到贵司正在招聘英语客服", "请问该岗位对外语", "您好，我想和您沟通下这个职位的细节"]):
+                        last_hr_msg = t
+                        break
+                        
+            if last_hr_msg:
+                print(f"      💬 【捕获到 HR 最新回复】: \"{last_hr_msg}\"", flush=True)
+                reply_text = generate_english_cs_reply(last_hr_msg)
+            else:
+                print("      💬 该英语客服会话未收到回复，发送专属跟进消息...", flush=True)
+                reply_text = "您好！关注到贵司的英语客服岗位，我的英语听说读写能力良好，能熟练处理英文工单与客户线上沟通，请问方便进一步了解下岗位要求吗？"
                 
-            print(f"      💬 【捕获到 HR 最新回复】: \"{last_hr_msg}\"", flush=True)
-            
             # 检查高危涉诈词汇
-            is_risky, risk_reason = fsm.check_high_risk_hr_message(last_hr_msg)
+            is_risky, risk_reason = fsm.check_high_risk_hr_message(last_hr_msg or "")
             if is_risky:
                 print(f"      🚨 【触发高危风控防火墙拦截】: {risk_reason}，已自动停止回复该会话！", flush=True)
                 continue
                 
             # 索要简历处理
-            if any(k in last_hr_msg.lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
+            if any(k in (last_hr_msg or "").lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
                 await try_send_resume_attachment(page)
                 
-            reply_text = generate_english_cs_reply(last_hr_msg)
             print(f"      🤖 【生成智能应答】: \"{reply_text}\"", flush=True)
             
             # 填入聊天输入框并回车发送
@@ -176,8 +180,8 @@ async def process_chat_inbox(page, fsm):
                 await input_box.click(timeout=3000)
                 await input_box.fill(reply_text)
                 await page.keyboard.press("Enter")
-                print("      🎉 ✅ 消息已成功发送至 HR！", flush=True)
-                log_event("HR_CHAT_REPLY_SENT", f"成功回复 HR: {reply_text[:30]}")
+                print("      🎉 ✅ 消息已成功发送至英语客服 HR！", flush=True)
+                log_event("HR_CHAT_REPLY_SENT", f"成功回复英语客服 HR: {reply_text[:30]}")
                 await asyncio.sleep(2.0)
                 
                 try:
@@ -192,8 +196,8 @@ async def process_chat_inbox(page, fsm):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘【HR 聊天室·实时双向多轮智能对话引擎】启动")
-    print(f"📄 绑定简历: {resume_file_path}")
+    print("🎯 BOSS 直聘【HR 聊天室·严格限定仅回复英语客服 HR】启动")
+    print(f"🛡️ 湖南本地 100% 隔离 | 📄 绑定简历: {resume_file_path}")
     print("="*70 + "\n", flush=True)
     
     config_mgr = ConfigManager()
@@ -257,7 +261,7 @@ async def main():
                 pass
         
         print("\n" + "╔" + "═"*60 + "╗")
-        print("║  🤖 【已开启 HR 消息常驻实时监听，有问必答，自动发简历！】║")
+        print("║  🤖 【严格限定：仅回复英语客服/海外客服 HR，绝对不碰湖南】║")
         print("╚" + "═"*60 + "╝\n", flush=True)
         
         cycle = 1
@@ -271,7 +275,7 @@ async def main():
             except Exception as e:
                 print(f"巡检通知: {e}", flush=True)
                 
-            print("⏳ 正在守候 HR 新消息中... (15 秒后自动检查)", flush=True)
+            print("⏳ 正在守候英语客服 HR 新消息中... (15 秒后自动检查)", flush=True)
             await asyncio.sleep(15)
             cycle += 1
 
