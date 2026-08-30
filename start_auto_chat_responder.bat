@@ -11,8 +11,8 @@ echo [1/3] Ensuring clean debugging environment...
 taskkill /F /IM chrome.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 
-echo [2/3] Launching Chrome with dedicated debugging channel...
-start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome_debug_profile" --no-first-run --no-default-browser-check "https://www.zhipin.com/web/geek/chat"
+echo [2/3] Launching Stealth Chrome with dedicated debugging channel...
+start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome_debug_profile" --disable-blink-features=AutomationControlled --disable-infobars --no-first-run --no-default-browser-check "https://www.zhipin.com/web/geek/chat"
 
 timeout /t 4 /nobreak >nul
 

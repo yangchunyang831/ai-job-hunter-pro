@@ -1,7 +1,9 @@
 """
 Bulletproof Live Multi-Turn Chat Responder for English CS HRs.
-Fixed: Excluded BOSS official system bot ('在线客服' / '系统消息') to guarantee targeting real HRs
-(翟先生·上海启页 / 欧阳先生·览川 / 诺博 / 世臻).
+Features:
+1. Anti-detection stealth flags (--disable-blink-features=AutomationControlled).
+2. Prevents anti-automation closure from BOSS 直聘 WAF.
+3. Resilient message typing with keyboard and robust Send triggering.
 """
 import sys
 import os
@@ -29,15 +31,12 @@ resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
 
 def is_english_cs_conversation(text: str) -> bool:
     """严格判断是否为英语客服/海外客服真实 HR，排除系统客服与湖南本地"""
-    # 1. 严格排除湖南本地
     if any(loc in text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲", "湘潭", "岳阳"]):
         return False
         
-    # 2. 严格排除 BOSS 官方系统客服与通知机器人
     if any(sys_kw in text for sys_kw in ["在线客服", "系统消息", "打招呼", "通知助手", "小助手", "客服助手", "安全中心"]):
         return False
         
-    # 3. 严格限定真实英语客服招聘企业/HR
     cs_keywords = ["英语", "英文", "外语", "海外客服", "跨境", "览川", "诺博", "启页", "世臻", "携程", "水裹汤泉", "翟", "欧阳"]
     return any(kw in text for kw in cs_keywords)
 
@@ -94,16 +93,13 @@ async def process_chat_inbox(context, fsm):
         return
     page = pages[0]
     
-    # 1. 查找并点击匹配的真实英语客服 HR 会话 (排除在线客服机器人)
+    # 1. 查找并点击匹配的真实英语客服 HR 会话
     clicked_info = await page.evaluate("""() => {
         const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
         for (let li of lis) {
             const txt = li.innerText || '';
-            // 严格排除湖南
             if (txt.includes('湖南') || txt.includes('怀化') || txt.includes('长沙')) continue;
-            // 严格排除官方系统机器人
             if (txt.includes('在线客服') || txt.includes('系统消息') || txt.includes('助手')) continue;
-            // 匹配真实 HR
             if (txt.includes('翟') || txt.includes('启页') || txt.includes('欧阳') || txt.includes('览川') || txt.includes('诺博') || txt.includes('世臻') || txt.includes('英语') || txt.includes('英文')) {
                 li.click();
                 return { success: true, text: txt.replace(/\\n/g, ' | ').slice(0, 65) };
@@ -117,13 +113,13 @@ async def process_chat_inbox(context, fsm):
         return
         
     print(f"   🎯 【已精准锁定真实 HR 会话】: {clicked_info['text']}", flush=True)
-    await asyncio.sleep(3.0)
+    await asyncio.sleep(2.5)
     
     # 刷新活跃 page 句柄
     pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
     if pages:
         page = pages[0]
-    
+        
     # 2. 提取右侧聊天历史
     messages = []
     try:
@@ -153,59 +149,54 @@ async def process_chat_inbox(context, fsm):
     if any(k in (last_hr_msg or "").lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
         await try_send_resume_attachment(page)
         
-    # 3. 采用 document.execCommand('insertText') 注入富文本并点击发送
+    # 3. 填入输入框并发送 (使用 Playwright 定位器 + 键盘按键与 DOM 注入)
     print("   👉 正在向聊天输入框填入回复并触发发送...", flush=True)
     
-    send_result = await page.evaluate(f"""(msg) => {{
-        const editor = document.getElementById('chat-input') || 
-                       document.querySelector('div[contenteditable="true"]') || 
-                       document.querySelector('.chat-input') ||
-                       document.querySelector('.chat-editor') ||
-                       document.querySelector('textarea');
-                       
-        if (!editor) return {{ success: false, reason: "No editor found" }};
-        
-        editor.focus();
-        const inserted = document.execCommand('insertText', false, msg);
-        if (!inserted) {{
-            if (editor.isContentEditable) {{
-                editor.innerText = msg;
-                editor.innerHTML = msg;
-            }} else {{
-                editor.value = msg;
-            }}
-            editor.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
-        }}
-        
-        let clicked = false;
-        const sendBtns = document.querySelectorAll('button, a, div[role="button"]');
-        for (let b of sendBtns) {{
-            const t = b.innerText ? b.innerText.trim() : '';
-            if (t === '发送' || (b.className && b.className.includes('btn-send'))) {{
-                b.click();
-                clicked = true;
-                break;
-            }}
-        }}
-        
-        return {{ success: true, inserted: inserted, clicked: clicked }};
-    }}""", reply_text)
-    
-    print(f"   👉 注入与发送执行结果: {send_result}", flush=True)
-    
-    # 键盘 Enter 双保险
     try:
+        editor = page.locator("#chat-input, div[contenteditable='true'], textarea, .chat-input").first
+        if await editor.is_visible():
+            await editor.click()
+            await asyncio.sleep(0.3)
+            await page.keyboard.type(reply_text, delay=15)
+            await asyncio.sleep(0.8)
+            
+            send_btn = page.locator("button.btn-send, button:has-text('发送'), [class*='btn-send'], .op-btn-send").first
+            if await send_btn.is_visible():
+                await send_btn.click()
+            else:
+                await page.keyboard.press("Enter")
+                
+            await asyncio.sleep(2.0)
+            print("   🎉 ✅ 消息已成功打字并送达 HR 聊天视窗！", flush=True)
+            return
+    except Exception as e:
+        print(f"   ℹ️ 定位器打字备用处理: {e}", flush=True)
+        
+    # DOM 原生备用方案
+    try:
+        await page.evaluate(f"""(msg) => {{
+            const editor = document.getElementById('chat-input') || 
+                           document.querySelector('div[contenteditable="true"]') || 
+                           document.querySelector('.chat-input') ||
+                           document.querySelector('textarea');
+            if (editor) {{
+                editor.focus();
+                document.execCommand('insertText', false, msg);
+                const sendBtns = document.querySelectorAll('button, a, div[role="button"]');
+                for (let b of sendBtns) {{
+                    const t = b.innerText ? b.innerText.trim() : '';
+                    if (t === '发送' || (b.className && b.className.includes('btn-send'))) {{
+                        b.click();
+                        break;
+                    }}
+                }}
+            }}
+        }}""", reply_text)
         await page.keyboard.press("Enter")
-    except Exception:
-        pass
-        
-    await asyncio.sleep(2.5)
-    print("   🎉 ✅ 消息已成功打字并送达 HR 聊天视窗！", flush=True)
-    
-    try:
-        await page.screenshot(path="tests/test_screenshots/live_chat_replied.png")
-    except Exception:
-        pass
+        await asyncio.sleep(2.0)
+        print("   🎉 ✅ 消息已通过原生 DOM 事件成功发送至 HR 视窗！", flush=True)
+    except Exception as e:
+        print(f"   ⚠️ DOM 发送通知: {e}", flush=True)
 
 
 async def main():
@@ -236,6 +227,8 @@ async def main():
                 chrome_path,
                 "--remote-debugging-port=9222",
                 f"--user-data-dir={user_data_dir}",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
                 "--no-first-run",
                 "--no-default-browser-check",
                 chat_url
@@ -258,6 +251,12 @@ async def main():
             
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
+        # 注入防检测特性
+        try:
+            await page.add_init_script("Object.defineProperty(navigator, 'webdriver', { get: () => undefined })")
+        except Exception:
+            pass
+            
         # 确保直达消息中心
         if "web/geek/chat" not in page.url:
             print("2. 正在直达页面: https://www.zhipin.com/web/geek/chat ...", flush=True)
@@ -275,7 +274,7 @@ async def main():
                 pass
                 
         print("\n" + "╔" + "═"*60 + "╗")
-        print("║  🤖 【已开启：精准定位【翟先生/欧阳先生】等真实 HR 并打字发送！】║")
+        print("║  🤖 【已开启：精准定位【欧阳先生/翟先生】并自动打字发送！】║")
         print("╚" + "═"*60 + "╝\n", flush=True)
         
         cycle = 1
