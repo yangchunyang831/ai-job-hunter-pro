@@ -3,7 +3,7 @@ Strict English CS Multi-Turn Live Chat Responder.
 Features:
 1. Strict Geofencing: 100% BLOCKS Hunan / Changsha / Huaihua / Hongjiang.
 2. Target Filtering: ONLY replies to HRs of 英语客服 / 英文客服 / 海外客服 / 跨境客服.
-3. Automatically responds with intelligent multi-turn dialogue.
+3. Automatically sends proactive follow-ups and responds to HR inquiries.
 4. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested by HR!
 """
 import sys
@@ -34,12 +34,9 @@ resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
 
 def is_english_cs_conversation(text: str) -> bool:
     """严格判断是否为英语客服/海外客服，且非湖南本地"""
-    # 1. 严格排除湖南本地
     if any(loc in text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲", "湘潭", "岳阳"]):
         return False
-        
-    # 2. 严格限定英语客服/海外客服关键词与测试靶标
-    cs_keywords = ["英语", "英文", "外语", "海外客服", "跨境", "览川", "诺博", "启页", "世臻", "携程", "水裹汤泉"]
+    cs_keywords = ["英语", "英文", "外语", "海外客服", "跨境", "览川", "诺博", "启页", "世臻", "携程", "水裹汤泉", "翟先生", "欧阳"]
     return any(kw in text for kw in cs_keywords)
 
 
@@ -59,7 +56,7 @@ def generate_english_cs_reply(hr_msg: str) -> str:
     if any(k in msg_lower for k in ["接受", "排班", "夜班", "轮休", "做五休二", "加班", "轮班"]):
         return "您好！我可以接受公司的正规排班与轮休制度，具有良好的团队协作与抗压能力。"
         
-    return "您好！我的英语具备良好的听说读写能力，能够熟练使用英文进行邮件往来、工单处理及日常客户线上沟通，日常业务沟通无障碍。请问贵司该岗位主要对接哪些区域的客户呢？"
+    return "您好！关注到贵司的英文客服岗位，我的英语听说读写能力良好，能熟练处理英文工单与日常客户线上沟通，请问方便进一步了解下具体的岗位职责和业务方向吗？"
 
 
 async def try_send_resume_attachment(page):
@@ -120,7 +117,6 @@ async def process_chat_inbox(page, fsm):
             
             # 严格跳过非英语客服/海外客服会话或湖南本地
             if not is_english_cs_conversation(item_text):
-                print(f"   ⏩ 忽略非英语客服/非测试会话: {item_text[:40]}", flush=True)
                 continue
                 
             print(f"\n   🎯 【命中英语客服目标】: {item_text[:65]}", flush=True)
@@ -133,7 +129,7 @@ async def process_chat_inbox(page, fsm):
                 }}
             }}""", c["idx"])
             
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(2.5)
             
             # 提取右侧聊天消息
             messages = await page.evaluate("""() => {
@@ -155,13 +151,9 @@ async def process_chat_inbox(page, fsm):
                         last_hr_msg = t
                         break
                         
-            if last_hr_msg:
-                print(f"      💬 【捕获到 HR 最新回复】: \"{last_hr_msg}\"", flush=True)
-                reply_text = generate_english_cs_reply(last_hr_msg)
-            else:
-                print("      💬 该英语客服会话未收到回复，发送专属跟进消息...", flush=True)
-                reply_text = "您好！关注到贵司的英语客服岗位，我的英语听说读写能力良好，能熟练处理英文工单与客户线上沟通，请问方便进一步了解下岗位要求吗？"
-                
+            # 生成高情商跟进/应答
+            reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
+            
             # 检查高危涉诈词汇
             is_risky, risk_reason = fsm.check_high_risk_hr_message(last_hr_msg or "")
             if is_risky:
@@ -261,7 +253,7 @@ async def main():
                 pass
         
         print("\n" + "╔" + "═"*60 + "╗")
-        print("║  🤖 【严格限定：仅回复英语客服/海外客服 HR，绝对不碰湖南】║")
+        print("║  🤖 【已开启：自动为翟先生/欧阳先生等英语客服 HR 跟进发送！】║")
         print("╚" + "═"*60 + "╝\n", flush=True)
         
         cycle = 1
