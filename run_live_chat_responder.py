@@ -1,9 +1,8 @@
 """
-Rock-Solid Native Live Chat Responder for English CS HRs.
-Features:
-1. Neutralizes BOSS 直聘 anti-debugger window.close() triggers.
-2. Safe evaluate with auto-retry and DOM stabilization.
-3. Finite 3-round inspection with physical mouse clicks and dual Enter/Ctrl+Enter sending.
+Rock-Solid Native Persistent Context Live Chat Responder for English CS HRs.
+Permanently eliminates browser closure by binding Chrome lifetime directly to Python.
+Permanently eliminates about:blank by navigating primary tab once without closing tabs.
+Finite 3-round inspection with physical mouse clicks and dual Enter/Ctrl+Enter sending.
 """
 import sys
 import os
@@ -22,6 +21,8 @@ from src.scoring_engine import ScoringEngine
 from src.conversation_fsm import ConversationFSM
 from src.notifier import NotificationManager
 
+chat_url = "https://www.zhipin.com/web/geek/chat"
+user_data_dir = r"C:\chrome_debug_profile"
 resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
 MAX_INSPECTION_ROUNDS = 3
 
@@ -80,7 +81,7 @@ async def try_send_resume_attachment(page):
 
 
 async def safe_evaluate(page, js_code, arg=None, retries=3):
-    """安全执行 evaluate，防止页面抖动时上下文销毁"""
+    """安全执行 evaluate"""
     for attempt in range(retries):
         try:
             if arg is not None:
@@ -95,7 +96,7 @@ async def safe_evaluate(page, js_code, arg=None, retries=3):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (抗导航中断 + 真实物理按键)"""
+    """遍历聊天列表并自动回复 HR (真正的物理鼠标点击与双快捷键发送)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
     # 1. 扫描所有匹配的会话项
@@ -269,38 +270,53 @@ async def main():
     notifier = NotificationManager()
     fsm = ConversationFSM(config_manager=config_mgr, notifier=notifier)
     
-    async with async_playwright() as p:
-        print("1. 正在接入桌面 Chrome 浏览器窗口...", flush=True)
-        browser = None
-        for i in range(15):
-            try:
-                browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-                if browser:
-                    break
-            except Exception:
-                await asyncio.sleep(1.0)
-                
-        if not browser:
-            print("❌ 无法连接桌面 Chrome 端口 9222，请重新运行批处理启动器！", flush=True)
-            return
-
-        context = browser.contexts[0]
-        pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
-        page = pages[0] if pages else context.pages[0]
-        
-        # 拦截中和 window.close() 与 debugger 反爬触发
+    # 清理残留锁文件
+    for f in Path(user_data_dir).glob("Singleton*"):
         try:
-            await page.evaluate("""() => {
-                window.close = () => { console.warn("Blocked anti-automation window.close()"); };
-            }""")
+            f.unlink(missing_ok=True)
+        except Exception:
+            pass
+    lock_file = Path(user_data_dir) / "lockfile"
+    if lock_file.exists():
+        try:
+            lock_file.unlink()
         except Exception:
             pass
             
-        print(f"2. 🎉 成功直连桌面 Chrome 窗口！当前页面: {page.url}", flush=True)
-        print("3. 正在等待消息中心数据加载就绪...", flush=True)
+    async with async_playwright() as p:
+        print("1. 正在启动原生常驻 Chrome 浏览器并直达 BOSS 直聘消息中心...", flush=True)
+        context = await p.chromium.launch_persistent_context(
+            user_data_dir=user_data_dir,
+            headless=False,
+            channel="chrome",
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+                "--no-first-run",
+                "--no-default-browser-check"
+            ]
+        )
         
-        # 宽容等待 3 秒
-        await asyncio.sleep(3.0)
+        # 始终使用主默认标签页，绝不关闭主页
+        page = context.pages[0]
+        
+        # 注入防反爬特性与 window.close 拦截
+        try:
+            await page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                window.close = () => { console.warn("Blocked window.close()"); };
+            """)
+        except Exception:
+            pass
+            
+        print(f"2. 🎉 Chrome 窗口已常驻打开！正在加载消息中心: {chat_url}", flush=True)
+        try:
+            await page.goto(chat_url, wait_until="commit", timeout=60000)
+        except Exception:
+            pass
+            
+        print("3. 正在等待消息中心数据加载就绪...", flush=True)
+        await asyncio.sleep(4.0)
         
         print("\n" + "╔" + "═"*60 + "╗")
         print(f"║  🤖 【已开启：有限 {MAX_INSPECTION_ROUNDS} 轮自动应答【欧阳先生/翟先生】！】 ║")
@@ -309,20 +325,7 @@ async def main():
         for cycle in range(1, MAX_INSPECTION_ROUNDS + 1):
             print(f"--- [第 {cycle}/{MAX_INSPECTION_ROUNDS} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                # 再次中和 window.close
-                try:
-                    if not page.is_closed():
-                        await page.evaluate("window.close = () => {};")
-                except Exception:
-                    pass
-                    
-                if not page.is_closed():
-                    await process_chat_inbox(page, fsm)
-                else:
-                    active_pages = [pg for pg in context.pages if not pg.is_closed()]
-                    if active_pages:
-                        page = active_pages[0]
-                        await process_chat_inbox(page, fsm)
+                await process_chat_inbox(page, fsm)
             except Exception as e:
                 print(f"巡检通知: {e}", flush=True)
                 
@@ -333,6 +336,9 @@ async def main():
         print("\n" + "="*70)
         print(f"🎉 【有限 {MAX_INSPECTION_ROUNDS} 轮消息巡检与智能回复全部执行完毕！】")
         print("="*70 + "\n", flush=True)
+        
+        # 保持窗口驻留 5 秒让用户看到结果
+        await asyncio.sleep(5.0)
 
 
 if __name__ == "__main__":
