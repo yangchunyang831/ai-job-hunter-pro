@@ -1,9 +1,7 @@
 """
 Rock-Solid Native Live Chat Responder for English CS HRs.
-Features:
-1. Limited-round inspection (Default: 3 rounds, then gracefully summarizes and finishes).
-2. Dual Send Key handling (Dispatches both Ctrl+Enter and Enter + direct button click) to support all BOSS shortcut settings.
-3. Live input clearing and message bubble verification.
+Permanently eliminates about:blank by navigating the primary tab directly without closing tabs.
+Finite 3-round inspection with guaranteed dual shortcut and button sending.
 """
 import sys
 import os
@@ -25,7 +23,7 @@ from src.notifier import NotificationManager
 chat_url = "https://www.zhipin.com/web/geek/chat"
 user_data_dir = r"C:\chrome_debug_profile"
 resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
-MAX_INSPECTION_ROUNDS = 3  # 用户指定：有限轮消息巡检（默认 3 轮后自动完成）
+MAX_INSPECTION_ROUNDS = 3  # 有限 3 轮巡检
 
 
 def is_english_cs_conversation(text: str) -> bool:
@@ -82,14 +80,9 @@ async def try_send_resume_attachment(page):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (支持 Ctrl+Enter 和 Enter 双击发与按钮强制发送)"""
+    """遍历聊天列表并自动回复 HR (真正的原生按键输入与实体发送按钮触发)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    try:
-        await page.bring_to_front()
-    except Exception:
-        pass
-        
     # 1. 扫描所有匹配的会话项
     matched_convos = await page.evaluate("""() => {
         const list = [];
@@ -115,7 +108,7 @@ async def process_chat_inbox(page, fsm):
         try:
             print(f"\n   🎯 【巡查会话】: {c['text']}", flush=True)
             
-            # 使用 Playwright 物理鼠标点击会话项
+            # 使用 Playwright 物理鼠标点击会话卡片
             lis_locator = page.locator('.user-list-content li, .chat-user-list li, ul.user-list li, li')
             try:
                 count = await lis_locator.count()
@@ -169,9 +162,8 @@ async def process_chat_inbox(page, fsm):
                 
             # 3. 聚焦输入框并键入
             print("      👉 正在激活输入框并进行物理级真机键盘打字...", flush=True)
-            await page.bring_to_front()
             
-            # 激活输入框
+            # 物理点击激活输入框
             editor_loc = page.locator("#chat-input, div[contenteditable='true'], textarea, [role='textbox'], .chat-editor .chat-input, .chat-input").first
             try:
                 if await editor_loc.is_visible():
@@ -188,7 +180,7 @@ async def process_chat_inbox(page, fsm):
             }""")
             await asyncio.sleep(0.3)
             
-            # 4. 真实键盘清空与逐字按键敲入
+            # 4. 键盘清空与逐字按键输入
             await page.keyboard.press("Control+A")
             await page.keyboard.press("Backspace")
             await asyncio.sleep(0.2)
@@ -200,19 +192,22 @@ async def process_chat_inbox(page, fsm):
                 const candidates = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, .chat-input');
                 for (let el of candidates) {{
                     if (el.isContentEditable) {{
-                        el.innerText = msg;
-                        el.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
+                        if (!el.innerText || el.innerText.trim() === '') {{
+                            el.innerText = msg;
+                            el.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
+                        }}
                     }} else if (el.tagName === 'TEXTAREA') {{
-                        el.value = msg;
-                        el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        if (!el.value || el.value.trim() === '') {{
+                            el.value = msg;
+                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        }}
                     }}
                 }}
             }}""", reply_text)
             
-            # 6. 多途径强制发送（按钮物理点击 + Ctrl+Enter + Enter 双保险）
+            # 6. 强制点击发送按钮 + 双快捷键击发
             print("      🚀 正在触发发送动作（点击发送按钮 + Enter/Ctrl+Enter 击键）...", flush=True)
             
-            # A. 点击发送按钮（Playwright 定位器）
             send_btn = page.locator("button.btn-send, button:has-text('发送'), [class*='btn-send'], .op-btn-send").first
             try:
                 if await send_btn.is_visible():
@@ -220,7 +215,6 @@ async def process_chat_inbox(page, fsm):
             except Exception:
                 pass
                 
-            # B. 点击发送按钮（JS 原生派发）
             await page.evaluate("""() => {
                 const btns = document.querySelectorAll('button, a, div[role="button"], .btn-send, .op-btn-send');
                 for (let b of btns) {
@@ -232,7 +226,6 @@ async def process_chat_inbox(page, fsm):
                 }
             }""")
             
-            # C. 敲击 Enter 与 Ctrl+Enter（兼容不同快捷键配置）
             await page.keyboard.press("Control+Enter")
             await asyncio.sleep(0.3)
             await page.keyboard.press("Enter")
@@ -286,8 +279,8 @@ async def main():
             ]
         )
         
-        # 激活首个主页面
-        page = context.pages[0] if context.pages else await context.new_page()
+        # 始终使用主默认标签页，绝不创建新页或关闭已有标签页
+        page = context.pages[0]
         
         # 注入防检测特性
         try:
@@ -296,21 +289,7 @@ async def main():
             pass
             
         print(f"2. 🎉 Chrome 窗口已常驻打开！正在加载消息中心: {chat_url}", flush=True)
-        try:
-            await page.goto(chat_url, wait_until="commit", timeout=60000)
-        except Exception:
-            pass
-            
-        # 强制将 BOSS 页面置于前台并关闭所有多余的空白页
-        await page.bring_to_front()
-        for pg in list(context.pages):
-            if pg != page:
-                try:
-                    await pg.close()
-                except Exception:
-                    pass
-        await page.bring_to_front()
-                    
+        await page.goto(chat_url, wait_until="domcontentloaded")
         print("3. 正在等待消息中心数据渲染就绪...", flush=True)
         await asyncio.sleep(5.0)
         
@@ -321,12 +300,6 @@ async def main():
         for cycle in range(1, MAX_INSPECTION_ROUNDS + 1):
             print(f"--- [第 {cycle}/{MAX_INSPECTION_ROUNDS} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                await page.bring_to_front()
-                if "zhipin.com" not in page.url:
-                    await page.goto(chat_url, wait_until="commit", timeout=60000)
-                    await page.bring_to_front()
-                    await asyncio.sleep(3.0)
-                    
                 await process_chat_inbox(page, fsm)
             except Exception as e:
                 print(f"巡检通知: {e}", flush=True)
