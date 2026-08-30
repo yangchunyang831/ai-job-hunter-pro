@@ -1,7 +1,7 @@
 """
 Bulletproof Live Multi-Turn Chat Responder for English CS HRs.
-Fixed: Auto re-fetches active page context after conversation click to prevent stale TargetClosedError.
-Seamlessly injects text with document.execCommand('insertText') and clicks Send.
+Fixed: Excluded BOSS official system bot ('在线客服' / '系统消息') to guarantee targeting real HRs
+(翟先生·上海启页 / 欧阳先生·览川 / 诺博 / 世臻).
 """
 import sys
 import os
@@ -28,10 +28,17 @@ resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
 
 
 def is_english_cs_conversation(text: str) -> bool:
-    """严格判断是否为英语客服/海外客服，且非湖南本地"""
+    """严格判断是否为英语客服/海外客服真实 HR，排除系统客服与湖南本地"""
+    # 1. 严格排除湖南本地
     if any(loc in text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲", "湘潭", "岳阳"]):
         return False
-    cs_keywords = ["英语", "英文", "外语", "海外客服", "跨境", "览川", "诺博", "启页", "世臻", "携程", "水裹汤泉", "翟先生", "欧阳"]
+        
+    # 2. 严格排除 BOSS 官方系统客服与通知机器人
+    if any(sys_kw in text for sys_kw in ["在线客服", "系统消息", "打招呼", "通知助手", "小助手", "客服助手", "安全中心"]):
+        return False
+        
+    # 3. 严格限定真实英语客服招聘企业/HR
+    cs_keywords = ["英语", "英文", "外语", "海外客服", "跨境", "览川", "诺博", "启页", "世臻", "携程", "水裹汤泉", "翟", "欧阳"]
     return any(kw in text for kw in cs_keywords)
 
 
@@ -77,7 +84,7 @@ async def try_send_resume_attachment(page):
 
 
 async def process_chat_inbox(context, fsm):
-    """遍历聊天列表并自动回复 HR (具备上下文动态重连与自动恢复)"""
+    """遍历聊天列表并自动回复 HR"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
     pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
@@ -87,32 +94,32 @@ async def process_chat_inbox(context, fsm):
         return
     page = pages[0]
     
-    # 1. 查找并点击匹配的英语客服会话
+    # 1. 查找并点击匹配的真实英语客服 HR 会话 (排除在线客服机器人)
     clicked_info = await page.evaluate("""() => {
         const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
         for (let li of lis) {
             const txt = li.innerText || '';
+            // 严格排除湖南
             if (txt.includes('湖南') || txt.includes('怀化') || txt.includes('长沙')) continue;
-            if (txt.includes('翟') || txt.includes('启页') || txt.includes('欧阳') || txt.includes('览川') || txt.includes('客服') || txt.includes('英语')) {
+            // 严格排除官方系统机器人
+            if (txt.includes('在线客服') || txt.includes('系统消息') || txt.includes('助手')) continue;
+            // 匹配真实 HR
+            if (txt.includes('翟') || txt.includes('启页') || txt.includes('欧阳') || txt.includes('览川') || txt.includes('诺博') || txt.includes('世臻') || txt.includes('英语') || txt.includes('英文')) {
                 li.click();
                 return { success: true, text: txt.replace(/\\n/g, ' | ').slice(0, 65) };
             }
-        }
-        if (lis.length > 0) {
-            lis[0].click();
-            return { success: true, text: lis[0].innerText.replace(/\\n/g, ' | ').slice(0, 65) };
         }
         return { success: false, text: '' };
     }""")
     
     if not clicked_info["success"]:
-        print("   暂未读取到有效会话列表，正在等待渲染...", flush=True)
+        print("   暂未扫描到未回复的英语客服 HR 目标，等待下轮巡检...", flush=True)
         return
         
-    print(f"   🎯 【已选中目标会话】: {clicked_info['text']}", flush=True)
+    print(f"   🎯 【已精准锁定真实 HR 会话】: {clicked_info['text']}", flush=True)
     await asyncio.sleep(3.0)
     
-    # 重新刷新活跃 page 句柄（防止 Vue 路由切换导致旧句柄失效）
+    # 刷新活跃 page 句柄
     pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
     if pages:
         page = pages[0]
@@ -129,9 +136,7 @@ async def process_chat_inbox(context, fsm):
             return msgs;
         }""")
     except Exception:
-        pages = [pg for pg in context.pages if not pg.is_closed()]
-        if pages:
-            page = pages[0]
+        pass
             
     last_hr_msg = ""
     if messages:
@@ -270,7 +275,7 @@ async def main():
                 pass
                 
         print("\n" + "╔" + "═"*60 + "╗")
-        print("║  🤖 【已开启：自动为【翟先生/欧阳先生】等英语客服 HR 打字发送！】║")
+        print("║  🤖 【已开启：精准定位【翟先生/欧阳先生】等真实 HR 并打字发送！】║")
         print("╚" + "═"*60 + "╝\n", flush=True)
         
         cycle = 1
