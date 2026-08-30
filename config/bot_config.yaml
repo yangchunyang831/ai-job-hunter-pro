@@ -9,7 +9,8 @@ feishu:
 
 wechat:
   enabled: true
-  channel: "wecom_webhook" # wecom_webhook / pushplus / serverchan
+  channel: "pc_wechat" # pc_wechat (原生电脑端微信直连) / wecom_webhook / pushplus / serverchan
+  pc_wechat_target: "文件传输助手" # 推送目标: "文件传输助手" 或指定好友/群名称
   webhook_url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your_wecom_key_here"
   pushplus_token: ""
   serverchan_sendkey: ""
@@ -19,10 +20,10 @@ wechat:
 
 astrbot:
   enabled: true
-  api_url: "http://127.0.0.1:6185/api/message/send" # AstrBot HTTP API 或 OneBot (http://127.0.0.1:3000/send_msg)
+  api_url: "http://127.0.0.1:6185/api/message/send"
   token: ""
-  message_type: "private" # "private" (私聊个人账号) 或 "group" (群聊)
-  target_id: "" # 您的个人 QQ / 微信 ID 或群号
+  message_type: "private"
+  target_id: ""
   notify_events:
     interview_invite: true
     resume_dispatch: true

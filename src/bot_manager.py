@@ -1,6 +1,6 @@
 """
-Enhanced WeChat (WeCom/PushPlus/ServerChan), Feishu & AstrBot Multi-Channel Notification Manager.
-Supports direct personal account integration via AstrBot / OneBot / WeChat / Feishu.
+Enhanced WeChat (PC WeChat 4.x / WeCom / PushPlus / ServerChan), Feishu & AstrBot Multi-Channel Notification Manager.
+Supports direct native PC WeChat desktop client at D:\Tencent\Weixin\Weixin.exe.
 """
 import re
 import json
@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional, List
 logger = logging.getLogger(__name__)
 
 class BotManager:
-    """微信、飞书与 AstrBot 个人账号多通道智能推送与 HR 触达管理器"""
+    """微信（电脑端直连/企微/PushPlus）、飞书与 AstrBot 个人账号多通道智能推送与 HR 触达管理器"""
     def __init__(self, config_path: Optional[str] = None):
         if config_path is None:
             config_path = str(Path(__file__).resolve().parent.parent / "config" / "bot_config.yaml")
@@ -51,7 +51,6 @@ class BotManager:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        # 兼容 AstrBot 原生 API 与 OneBot V11 标准
         payload = {
             "message_type": msg_type,
             "user_id": user_or_group_id,
@@ -110,15 +109,28 @@ class BotManager:
             return False
 
     def send_wechat_message(self, title: str, content: str) -> bool:
-        """发送企业微信 / PushPlus / ServerChan 微信推送消息"""
+        """发送原生电脑微信客户端 / 企业微信 / PushPlus / ServerChan 消息"""
         wechat_cfg = self.config.get("wechat", {})
         if not wechat_cfg.get("enabled", False):
             return False
 
-        channel = wechat_cfg.get("channel", "wecom_webhook")
+        channel = wechat_cfg.get("channel", "pc_wechat")
         
-        # 1. 企业微信群机器人 Webhook
-        if channel == "wecom_webhook":
+        # 1. 原生电脑端微信直连 (D:\Tencent\Weixin\Weixin.exe)
+        if channel == "pc_wechat":
+            try:
+                from wxautox4 import WeChat
+                wx = WeChat()
+                target = wechat_cfg.get("pc_wechat_target", "文件传输助手")
+                wx.ChatWith(target)
+                wx.SendMsg(f"🎯 【{title}】\n\n{content}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to send native PC WeChat message: {e}")
+                return False
+
+        # 2. 企业微信群机器人 Webhook
+        elif channel == "wecom_webhook":
             webhook_url = wechat_cfg.get("webhook_url", "").strip()
             if not webhook_url or "your_wecom" in webhook_url:
                 logger.info("企业微信 Webhook 未配置真实 Key，跳过实际网络请求。")
@@ -139,7 +151,7 @@ class BotManager:
                 logger.error(f"Failed to send WeCom message: {e}")
                 return False
 
-        # 2. PushPlus (个人微信直接弹窗)
+        # 3. PushPlus (个人微信直接弹窗)
         elif channel == "pushplus":
             token = wechat_cfg.get("pushplus_token", "").strip()
             if not token:
@@ -158,7 +170,7 @@ class BotManager:
                 logger.error(f"Failed to send PushPlus message: {e}")
                 return False
 
-        # 3. ServerChan (微信方糖推送)
+        # 4. ServerChan (微信方糖推送)
         elif channel == "serverchan":
             sendkey = wechat_cfg.get("serverchan_sendkey", "").strip()
             if not sendkey:
@@ -186,15 +198,14 @@ class BotManager:
         return tpls.get("phone_sms_followup", "HR老师您好，我是BOSS直聘沟通的杨春，已将简历发送给您，祝工作顺利！")
 
     def notify_resume_sent_event(self, hr_name: str, job_info: str) -> Dict[str, Any]:
-        """广播简历送达事件至 AstrBot、飞书与微信"""
+        """广播简历送达事件至电脑端微信、AstrBot 与飞书"""
         title = f"📄 简历已正式送达 HR [{hr_name}]"
         content = (
-            f"🎯 **【AI 求职猎头·投递通知】**\n\n"
-            f"👤 **求职者**: 杨春 (区块链工程本科 / 英语客服专向)\n"
-            f"💼 **对接 HR**: {hr_name}\n"
-            f"🏢 **岗位信息**: {job_info}\n"
-            f"✅ **投递状态**: 完整三步官方流程交付成功（在线简历已送达）\n"
-            f"🤫 **后续策略**: AI 已自动进入静默守候，等待 HR 进一步消息通知！"
+            f"👤 求职者: 杨春 (区块链工程本科 / 英语客服专向)\n"
+            f"💼 对接 HR: {hr_name}\n"
+            f"🏢 岗位信息: {job_info}\n"
+            f"✅ 投递状态: 完整三步官方流程交付成功（在线简历已送达）\n"
+            f"🤫 后续策略: AI 已自动进入静默守候，等待 HR 进一步消息通知！"
         )
         fields = [
             {"key": "HR", "value": hr_name},
@@ -203,32 +214,28 @@ class BotManager:
             {"key": "当前状态", "value": "等待 HR 审阅"}
         ]
         
-        # 广播到 AstrBot 个人账号
-        astr_ok = self.send_astrbot_message(message=content)
-        # 广播到飞书
-        feishu_ok = self.send_feishu_card(title=title, content=content, fields=fields, template_color="green")
-        # 广播到微信
         wechat_ok = self.send_wechat_message(title=title, content=content)
+        astr_ok = self.send_astrbot_message(message=content)
+        feishu_ok = self.send_feishu_card(title=title, content=content, fields=fields, template_color="green")
         
-        return {"astrbot_sent": astr_ok, "feishu_sent": feishu_ok, "wechat_sent": wechat_ok}
+        return {"wechat_sent": wechat_ok, "astrbot_sent": astr_ok, "feishu_sent": feishu_ok}
 
     def notify_interview_event(self, company: str, job_title: str, hr_name: str, message: str) -> Dict[str, Any]:
-        """全通道高亮广播面试邀约与联系方式事件至 AstrBot、飞书与微信"""
+        """全通道高亮广播面试邀约与联系方式事件至电脑端微信、AstrBot 与飞书"""
         title = f"🎉 收到面试邀约 / 联系方式请求 [{company}]"
         phone_match = re.findall(r"1[3-9]\d{9}", message)
         detected_phone = phone_match[0] if phone_match else None
         wechat_greeting = self.generate_hr_greeting(detected_phone or "", channel="wechat")
         
         content = (
-            f"🚨 **【AI 求职猎头·面试与联系方式极速预警】**\n\n"
-            f"🏢 **公司**: {company}\n"
-            f"💼 **岗位**: {job_title}\n"
-            f"👤 **HR**: {hr_name}\n"
-            f"💬 **最新消息**: {message}\n"
-            f"📱 **提取电话/微信**: {detected_phone or '需人工查看'}\n\n"
-            f"📋 **自动生成微信申请打招呼词 (可一键复制)**:\n"
+            f"🏢 公司: {company}\n"
+            f"💼 岗位: {job_title}\n"
+            f"👤 HR: {hr_name}\n"
+            f"💬 最新消息: {message}\n"
+            f"📱 提取电话/微信: {detected_phone or '需人工查看'}\n\n"
+            f"📋 自动生成微信申请打招呼词 (可一键复制):\n"
             f"> {wechat_greeting}\n\n"
-            f"⚠️ **AI 已自动暂停该会话回复，请立即打开微信/浏览器进行手动对接！**"
+            f"⚠️ AI 已自动暂停该会话回复，请立即打开微信/浏览器进行手动对接！"
         )
         fields = [
             {"key": "公司", "value": company},
@@ -237,15 +244,15 @@ class BotManager:
             {"key": "提取电话/微信", "value": detected_phone or "需人工查看"}
         ]
         
+        wechat_ok = self.send_wechat_message(title=title, content=content)
         astr_ok = self.send_astrbot_message(message=content)
         feishu_ok = self.send_feishu_card(title=title, content=content, fields=fields, template_color="red")
-        wechat_ok = self.send_wechat_message(title=title, content=content)
         
         return {
             "title": title,
             "detected_phone": detected_phone,
             "wechat_greeting": wechat_greeting,
+            "wechat_sent": wechat_ok,
             "astrbot_sent": astr_ok,
-            "feishu_sent": feishu_ok,
-            "wechat_sent": wechat_ok
+            "feishu_sent": feishu_ok
         }
