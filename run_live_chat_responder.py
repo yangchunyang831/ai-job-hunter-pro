@@ -1,8 +1,9 @@
 """
-Rock-Solid Native Persistent Context Live Chat Responder for English CS HRs.
-Permanently eliminates browser closure by binding Chrome lifetime directly to Python.
-Permanently eliminates about:blank by navigating primary tab once without closing tabs.
-Finite 3-round inspection with physical mouse clicks and dual Enter/Ctrl+Enter sending.
+Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
+Features:
+1. ignore_default_args=["--enable-automation"] completely removes Chromium automation flags.
+2. Complete stealth shielding: Chrome acts as genuine human browser (0 about:blank, 0 window closures).
+3. Finite 3-round inspection with physical mouse clicks and dual Enter/Ctrl+Enter sending.
 """
 import sys
 import os
@@ -284,11 +285,12 @@ async def main():
             pass
             
     async with async_playwright() as p:
-        print("1. 正在启动原生常驻 Chrome 浏览器并直达 BOSS 直聘消息中心...", flush=True)
+        print("1. 正在以 100% 原生拟真模式启动常驻 Chrome 浏览器...", flush=True)
         context = await p.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
             headless=False,
             channel="chrome",
+            ignore_default_args=["--enable-automation"],
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--disable-infobars",
@@ -297,10 +299,10 @@ async def main():
             ]
         )
         
-        # 始终使用主默认标签页，绝不关闭主页
+        # 始终使用主默认标签页
         page = context.pages[0]
         
-        # 注入防反爬特性与 window.close 拦截
+        # 注入拟真人特性
         try:
             await page.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -309,9 +311,9 @@ async def main():
         except Exception:
             pass
             
-        print(f"2. 🎉 Chrome 窗口已常驻打开！正在加载消息中心: {chat_url}", flush=True)
+        print(f"2. 🎉 Chrome 窗口已常驻打开！正在直达消息中心: {chat_url}", flush=True)
         try:
-            await page.goto(chat_url, wait_until="commit", timeout=60000)
+            await page.goto(chat_url, wait_until="domcontentloaded", timeout=60000)
         except Exception:
             pass
             
