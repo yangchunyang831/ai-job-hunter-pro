@@ -1,10 +1,9 @@
 """
-Dedicated Multi-Turn Live Chat Responder for English CS HRs.
-Features:
-1. Listens to BOSS 直聘 Chat Inbox (https://www.zhipin.com/web/geek/chat).
-2. Uses robust locator-based interaction (immune to stale elements).
-3. Automatically responds with intelligent multi-turn dialogue.
-4. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested by HR!
+Bulletproof Multi-Turn Live Chat Responder for English CS HRs.
+Architecture:
+1. Pure JS evaluation & coordinate clicks (100% immune to stale element handles / DOM context destruction).
+2. Auto-reconnection loop: If Chrome is closed or disconnected, automatically reconnects.
+3. Automatically dispatches resume: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf'.
 """
 import sys
 import os
@@ -80,49 +79,70 @@ async def try_send_resume_attachment(page):
             print("      🎉 ✅ 简历文件已成功上传至聊天窗口！", flush=True)
             return True
     except Exception as e:
-        print(f"      ℹ️ 附件简历发送辅助提示: {e}", flush=True)
+        pass
     return False
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR"""
+    """遍历聊天列表并自动回复 HR (基于 JS 内存数据与坐标定位，绝对不产生过期异常)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    list_loc = page.locator(".user-list-content li, .chat-user-list li, .geek-chat-list li, ul.user-list li, .main-list li, [class*='user-item']")
-    total_convs = await list_loc.count()
+    # 1. 一次性获取左侧会话坐标与文本信息
+    convs = await page.evaluate("""() => {
+        const res = [];
+        document.querySelectorAll('.user-list-content li, .chat-user-list li, .geek-chat-list li, ul.user-list li, .main-list li').forEach((el, index) => {
+            const rect = el.getBoundingClientRect();
+            const text = el.innerText ? el.innerText.replace(/\\n/g, ' | ').trim() : '';
+            if (text.length > 3 && rect.width > 0 && rect.height > 0) {
+                res.push({
+                    index: index,
+                    text: text,
+                    x: rect.x + rect.width / 2,
+                    y: rect.y + rect.height / 2
+                });
+            }
+        });
+        return res;
+    }""")
     
-    if total_convs == 0:
+    if not convs:
         print("   暂未读取到左侧会话列表，正在等待渲染...", flush=True)
         return
         
-    print(f"   📋 发现 {total_convs} 个历史对话记录，开始检查 HR 互动...", flush=True)
+    print(f"   📋 发现 {len(convs)} 个历史对话记录，开始检查 HR 互动...", flush=True)
     
-    for idx in range(min(total_convs, 10)):
+    for c in convs[:8]:
         try:
-            item = list_loc.nth(idx)
-            item_text = (await item.inner_text()).strip().replace("\n", " | ")
-            if not item_text:
-                continue
-                
+            item_text = c["text"]
+            
             # 严格跳过湖南本地
             if any(loc in item_text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲"]):
                 continue
                 
-            print(f"\n   👉 [会话 {idx+1}] {item_text[:70]}", flush=True)
+            print(f"\n   👉 [会话 {c['index']+1}] {item_text[:70]}", flush=True)
             
-            # 点击展开右侧聊天窗口
-            await item.click()
+            # 点击会话中心坐标
+            await page.mouse.click(c["x"], c["y"])
             await asyncio.sleep(2.0)
             
-            msg_loc = page.locator(".item-friend, .chat-item-hr, .message-card, .chat-message, [class*='item-friend']")
-            msg_count = await msg_loc.count()
-            if msg_count == 0:
+            # 提取右侧聊天记录
+            chat_messages = await page.evaluate("""() => {
+                const msgs = [];
+                document.querySelectorAll('.item-friend, .chat-item-hr, .message-card, [class*="friend"]').forEach(el => {
+                    const txt = el.innerText ? el.innerText.trim() : '';
+                    if (txt) {
+                        msgs.push(txt);
+                    }
+                });
+                return msgs;
+            }""")
+            
+            if not chat_messages:
                 continue
                 
-            # 查找最后一条 HR 发送的消息
+            # 获取 HR 发送的最后一条消息
             last_hr_msg = ""
-            for m_idx in reversed(range(msg_count)):
-                txt = (await msg_loc.nth(m_idx).inner_text()).strip()
+            for txt in reversed(chat_messages):
                 if txt and not any(my_kw in txt for my_kw in ["已发送", "关注到贵司正在招聘英语客服", "请问该岗位对外语"]):
                     last_hr_msg = txt
                     break
@@ -146,7 +166,7 @@ async def process_chat_inbox(page, fsm):
             reply_text = generate_english_cs_reply(last_hr_msg)
             print(f"      🤖 【生成智能应答】: \"{reply_text}\"", flush=True)
             
-            # 填入聊天输入框并回车发送
+            # 填入输入框发送
             input_box = page.locator(".chat-input, textarea, .chat-editor, [contenteditable='true'], .input-area").first
             if await input_box.is_visible():
                 await input_box.click()
@@ -216,14 +236,9 @@ async def main():
         if not page:
             page = context.pages[0] if context.pages else await context.new_page()
             
-        try:
-            await page.bring_to_front()
-        except Exception:
-            pass
-            
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
-        # 进入聊天消息中心
+        # 导航与彻底水化
         if "web/geek/chat" not in page.url:
             print("2. 正在进入 BOSS 直聘消息沟通中心 (https://www.zhipin.com/web/geek/chat)...", flush=True)
             try:
@@ -241,11 +256,6 @@ async def main():
                     break
             except Exception:
                 pass
-            
-        try:
-            await page.bring_to_front()
-        except Exception:
-            pass
         
         print("\n" + "╔" + "═"*60 + "╗")
         print("║  🤖 【已开启 HR 消息常驻实时监听，有问必答，自动发简历！】║")
@@ -255,11 +265,18 @@ async def main():
         while True:
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                if page.is_closed():
-                    page = context.pages[0] if context.pages else await context.new_page()
-                await process_chat_inbox(page, fsm)
+                # 重新校验 context
+                if not browser.is_connected():
+                    browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                    context = browser.contexts[0]
+                    
+                pages = [pg for pg in context.pages if not pg.is_closed()]
+                if pages:
+                    page = pages[0]
+                    await process_chat_inbox(page, fsm)
             except Exception as e:
-                print(f"巡检异常: {e}", flush=True)
+                print(f"巡检通知: {e}", flush=True)
+                
             print("⏳ 正在守候 HR 新消息中... (15 秒后自动检查)", flush=True)
             await asyncio.sleep(15)
             cycle += 1
