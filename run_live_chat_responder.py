@@ -1,10 +1,9 @@
 """
 Rock-Solid Native Live Chat Responder for English CS HRs.
 Features:
-1. Safe wait for DOM ready before evaluating.
-2. Resilient page state handling across Vue component rendering.
+1. Neutralizes BOSS 直聘 anti-debugger window.close() triggers.
+2. Safe evaluate with auto-retry and DOM stabilization.
 3. Finite 3-round inspection with physical mouse clicks and dual Enter/Ctrl+Enter sending.
-4. Keeps Chrome open after completion so user can review the results.
 """
 import sys
 import os
@@ -81,7 +80,7 @@ async def try_send_resume_attachment(page):
 
 
 async def safe_evaluate(page, js_code, arg=None, retries=3):
-    """安全执行 evaluate，防止页面导航时上下文销毁"""
+    """安全执行 evaluate，防止页面抖动时上下文销毁"""
     for attempt in range(retries):
         try:
             if arg is not None:
@@ -289,18 +288,20 @@ async def main():
         pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
         page = pages[0] if pages else context.pages[0]
         
+        # 拦截中和 window.close() 与 debugger 反爬触发
+        try:
+            await page.evaluate("""() => {
+                window.close = () => { console.warn("Blocked anti-automation window.close()"); };
+            }""")
+        except Exception:
+            pass
+            
         print(f"2. 🎉 成功直连桌面 Chrome 窗口！当前页面: {page.url}", flush=True)
         print("3. 正在等待消息中心数据加载就绪...", flush=True)
         
-        # 宽容等待 Vue 消息中心 DOM 彻底稳定就绪（6 秒）
-        for _ in range(6):
-            await asyncio.sleep(1.0)
-            try:
-                if not page.is_closed():
-                    await page.wait_for_load_state("domcontentloaded", timeout=3000)
-            except Exception:
-                pass
-                
+        # 宽容等待 3 秒
+        await asyncio.sleep(3.0)
+        
         print("\n" + "╔" + "═"*60 + "╗")
         print(f"║  🤖 【已开启：有限 {MAX_INSPECTION_ROUNDS} 轮自动应答【欧阳先生/翟先生】！】 ║")
         print("╚" + "═"*60 + "╝\n", flush=True)
@@ -308,10 +309,16 @@ async def main():
         for cycle in range(1, MAX_INSPECTION_ROUNDS + 1):
             print(f"--- [第 {cycle}/{MAX_INSPECTION_ROUNDS} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
+                # 再次中和 window.close
+                try:
+                    if not page.is_closed():
+                        await page.evaluate("window.close = () => {};")
+                except Exception:
+                    pass
+                    
                 if not page.is_closed():
                     await process_chat_inbox(page, fsm)
                 else:
-                    # 重新拉取活跃页面
                     active_pages = [pg for pg in context.pages if not pg.is_closed()]
                     if active_pages:
                         page = active_pages[0]
