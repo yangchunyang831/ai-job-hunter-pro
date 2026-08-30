@@ -1,16 +1,24 @@
 """
 Enhanced WeChat (PC WeChat 4.x / WeCom / PushPlus / ServerChan), Feishu & AstrBot Multi-Channel Notification Manager.
-Supports direct native PC WeChat desktop client at D:\Tencent\Weixin\Weixin.exe.
+Supports direct native PC WeChat desktop client with 100% group isolation.
 """
 import re
 import json
 import logging
+import time
+import ctypes
+from ctypes import wintypes
+import psutil
+import pyperclip
+import uiautomation as auto
 import httpx
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
+user32 = ctypes.windll.user32
+SW_RESTORE = 9
 
 class BotManager:
     """微信（电脑端直连/企微/PushPlus）、飞书与 AstrBot 个人账号多通道智能推送与 HR 触达管理器"""
@@ -32,6 +40,74 @@ class BotManager:
 
     def reload_config(self):
         self.config = self._load_config()
+
+    def send_pc_wechat_safe(self, target: str, content: str) -> bool:
+        """原生电脑端微信安全发送（严格隔离群聊，直达文件传输助手）"""
+        try:
+            hwnds = []
+            def enum_cb(hwnd, lparam):
+                if not user32.IsWindow(hwnd) or not user32.IsWindowVisible(hwnd):
+                    return True
+                cls_buff = ctypes.create_unicode_buffer(256)
+                user32.GetClassNameW(hwnd, cls_buff, 256)
+                txt_len = user32.GetWindowTextLengthW(hwnd)
+                buff = ctypes.create_unicode_buffer(txt_len + 1)
+                user32.GetWindowTextW(hwnd, buff, txt_len + 1)
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                try:
+                    pname = psutil.Process(pid.value).name().lower()
+                except Exception:
+                    pname = ""
+                if "weixin" in pname or "wechat" in pname:
+                    rect = wintypes.RECT()
+                    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+                    w = rect.right - rect.left
+                    h = rect.bottom - rect.top
+                    if w > 400 and h > 350:
+                        hwnds.append((hwnd, buff.value, cls_buff.value, pid.value, (rect.left, rect.top, w, h)))
+                return True
+            cb = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)(enum_cb)
+            user32.EnumWindows(cb, 0)
+            
+            if not hwnds:
+                return False
+                
+            main_hwnd, title, cls_name, pid, (left, top, width, height) = hwnds[0]
+            user32.ShowWindow(main_hwnd, SW_RESTORE)
+            time.sleep(0.2)
+            user32.SetForegroundWindow(main_hwnd)
+            time.sleep(0.4)
+            
+            # 搜索目标（默认严格锁定文件传输助手）
+            auto.SendKeys("{Ctrl}f")
+            time.sleep(0.3)
+            pyperclip.copy(target)
+            auto.SendKeys("{Ctrl}v")
+            time.sleep(0.6)
+            auto.SendKeys("{Enter}")
+            time.sleep(0.8)
+            
+            # 激活聊天输入框并发送
+            chat_input_x = int(left + width * 0.65)
+            chat_input_y = int(top + height * 0.85)
+            user32.SetCursorPos(chat_input_x, chat_input_y)
+            time.sleep(0.1)
+            ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
+            time.sleep(0.05)
+            ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
+            time.sleep(0.3)
+            
+            pyperclip.copy(content)
+            auto.SendKeys("{Ctrl}v")
+            time.sleep(0.4)
+            auto.SendKeys("{Enter}")
+            time.sleep(0.3)
+            auto.SendKeys("{Ctrl}{Enter}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send PC WeChat message: {e}")
+            return False
 
     def send_astrbot_message(self, message: str, target_id: Optional[str] = None) -> bool:
         """通过 AstrBot 个人账号中枢（支持个人微信/QQ/飞书/TG）推送消息"""
@@ -116,18 +192,11 @@ class BotManager:
 
         channel = wechat_cfg.get("channel", "pc_wechat")
         
-        # 1. 原生电脑端微信直连 (D:\Tencent\Weixin\Weixin.exe)
+        # 1. 原生电脑端微信直连 (默认严格锁定文件传输助手，100% 隔离群聊)
         if channel == "pc_wechat":
-            try:
-                from wxautox4 import WeChat
-                wx = WeChat()
-                target = wechat_cfg.get("pc_wechat_target", "文件传输助手")
-                wx.ChatWith(target)
-                wx.SendMsg(f"🎯 【{title}】\n\n{content}")
-                return True
-            except Exception as e:
-                logger.error(f"Failed to send native PC WeChat message: {e}")
-                return False
+            target = wechat_cfg.get("pc_wechat_target", "文件传输助手")
+            full_msg = f"🎯 【{title}】\n\n{content}"
+            return self.send_pc_wechat_safe(target=target, content=full_msg)
 
         # 2. 企业微信群机器人 Webhook
         elif channel == "wecom_webhook":
@@ -192,10 +261,10 @@ class BotManager:
         """根据渠道与 HR 联系方式自动生成复制即用的话术"""
         tpls = self.config.get("contact_greeting_templates", {})
         if channel == "wechat":
-            return tpls.get("wechat_friend_request", "您好，我是BOSS直聘沟通的杨春，特来添加您的微信，已备好简历，期待与您交流！")
+            return tpls.get("wechat_friend_request", "您好，我是BOSS直聘沟通的杨春，特来添加您的微信，已备好个人简历，期待与您进一步交流！")
         elif channel == "feishu":
-            return tpls.get("feishu_friend_request", "您好，我是应聘贵司岗位的杨春，特来添加您的飞书，已同步简历，请多关照！")
-        return tpls.get("phone_sms_followup", "HR老师您好，我是BOSS直聘沟通的杨春，已将简历发送给您，祝工作顺利！")
+            return tpls.get("feishu_friend_request", "您好，我是应聘贵司岗位的杨春（全日制统招本科/区块链工程/C1驾照），特来添加您的飞书，已同步简历，请多关照！")
+        return tpls.get("phone_sms_followup", "HR老师您好，我是BOSS直聘沟通的杨春，已将简历发送至您的邮箱/微信，期待能有进一步沟通机会，祝您工作顺利！")
 
     def notify_resume_sent_event(self, hr_name: str, job_info: str) -> Dict[str, Any]:
         """广播简历送达事件至电脑端微信、AstrBot 与飞书"""

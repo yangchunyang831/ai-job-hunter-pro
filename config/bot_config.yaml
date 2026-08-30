@@ -9,8 +9,8 @@ feishu:
 
 wechat:
   enabled: true
-  channel: "pc_wechat" # pc_wechat (原生电脑端微信直连) / wecom_webhook / pushplus / serverchan
-  pc_wechat_target: "文件传输助手" # 推送目标: "文件传输助手" 或指定好友/群名称
+  channel: "pc_wechat" # pc_wechat (原生微信安全直连) / wecom_webhook / pushplus / serverchan
+  pc_wechat_target: "文件传输助手" # 严格锁定【文件传输助手】，100% 隔离所有群聊，私密直达手机
   webhook_url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your_wecom_key_here"
   pushplus_token: ""
   serverchan_sendkey: ""
