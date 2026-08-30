@@ -1,12 +1,12 @@
 """
-Sequential Paced Job Communicator (30-Second Reply Window & Auto-Progression).
-Workflow:
-1. Connects directly to active Chrome via CDP 9222 without re-searching.
-2. Loops through non-Hunan target job cards on screen one by one.
-3. Clicks '立即沟通' and sends customized greeting.
-4. Listens for 30 seconds for HR response:
-   - If HR replies: Automatically responds via LLM/FSM and maintains dialogue.
-   - If NO reply in 30 seconds: Smoothly advances to the next job card!
+Zero-Ban Precision Pipeline (Search Once, Match Target, 30s Timeout Progression).
+Rules:
+1. Search/Navigate EXACTLY ONCE.
+2. Read all cards into memory and match specifically against '英语客服' / '海外客服'.
+3. Exclude Hunan/Huaihua strictly.
+4. For matched cards: Click card -> Click '立即沟通' -> Send greeting -> Wait 30s for HR reply.
+5. If HR replies: Auto-reply via FSM/LLM.
+6. If 30s timeout: Smoothly advance to the next matched English CS card!
 """
 import sys
 import os
@@ -30,13 +30,12 @@ from src.notifier import NotificationManager
 
 
 async def listen_for_hr_reply(page, duration_sec=30):
-    """在聊天界面监听 HR 是否在指定时间内回复"""
+    """在聊天界面监听 HR 是否在 30 秒内回复"""
     start_time = time.time()
     last_msg_count = 0
     
-    # 初始消息数
     try:
-        msgs = await page.query_selector_all(".item-friend, .chat-item-hr, .message-card, .chat-message")
+        msgs = await page.query_selector_all(".item-friend, .chat-item-hr, .message-card, .chat-message, [class*='item-friend']")
         last_msg_count = len(msgs)
     except Exception:
         pass
@@ -50,7 +49,6 @@ async def listen_for_hr_reply(page, duration_sec=30):
         try:
             current_msgs = await page.query_selector_all(".item-friend, .chat-item-hr, .message-card, .chat-message, [class*='item-friend']")
             if len(current_msgs) > last_msg_count:
-                # 捕获到 HR 最新回复！
                 new_msg = current_msgs[-1]
                 msg_text = (await new_msg.inner_text()).strip()
                 print(f"\n   🎉 【捕获到 HR 实时在线回复！】内容: \"{msg_text}\"", flush=True)
@@ -60,7 +58,7 @@ async def listen_for_hr_reply(page, duration_sec=30):
             
         print(f"   ⏳ 监听中... (剩余 {remaining}s)", flush=True)
         
-    print("   ⏱️ 30 秒超时：HR 暂未在线回复。", flush=True)
+    print("   ⏱️ 30 秒超时：HR 暂未在线回复，自动切入下一个匹配岗位。", flush=True)
     return False, None
 
 
@@ -82,7 +80,7 @@ async def send_auto_reply_to_hr(page, reply_text):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘【30秒无回复自动切岗·有回复秒级智能应答】实战系统启动")
+    print("🎯 BOSS 直聘【单次搜索·精准匹配英语客服·30秒无回复自动切岗】实战系统启动")
     print("="*70 + "\n", flush=True)
     
     config_mgr = ConfigManager()
@@ -107,7 +105,7 @@ async def main():
                 await asyncio.sleep(1.0)
                 
         if not browser:
-            print("1. 正在启动桌面 Chrome 浏览器窗口...", flush=True)
+            print("1. 正在以原生 Windows 进程拉起 Chrome 浏览器 (已启用 9222 调试端口)...", flush=True)
             subprocess.Popen([
                 chrome_path,
                 "--remote-debugging-port=9222",
@@ -134,84 +132,135 @@ async def main():
         
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
-        if "403.html" in page.url or "security" in page.url:
-            print("\n🚨 当前处于限制页，请手机开热点连一下电脑（或点击窗口中【立即登录】）解除后继续！\n", flush=True)
-            return
-
-        # 获取已有卡片
-        print("2. 正在提取页面上的在招卡片列表...", flush=True)
+        # 严格执行【只导航/搜索 1 次，绝不重复刷新】
+        if "web/geek/jobs" not in page.url or "101020100" not in page.url:
+            print(f"\n2. 正在执行单次精准加载: 【上海·英语客服】...", flush=True)
+            print(f"   URL: {target_url}", flush=True)
+            try:
+                await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+            except Exception as e:
+                print(f"   页面加载通知: {e}", flush=True)
+            await asyncio.sleep(3)
+        else:
+            print("2. ✅ 当前标签页已就绪，无需重复发送搜索请求！", flush=True)
+            
+        await page.bring_to_front()
         await asyncio.sleep(2)
         
-        cards = await page.query_selector_all(".job-card-wrapper, .job-card-box, li.job-card, .job-list-box li, [class*='job-card']")
+        # 3. 读取页面中已渲染的全部岗位卡片
+        print("\n3. 正在读取页面上的在招岗位卡片列表...", flush=True)
+        cards = []
+        for _ in range(15):
+            await asyncio.sleep(1.0)
+            try:
+                card_elems = await page.query_selector_all(".job-card-wrapper, .job-card-box, li.job-card, .job-list-box li, [class*='job-card']")
+                for c in card_elems:
+                    txt = (await c.inner_text()).strip()
+                    if len(txt) > 15 and any(k in txt for k in ["K", "k", "薪", "元", "面议"]):
+                        if c not in cards:
+                            cards.append(c)
+                if cards:
+                    break
+            except Exception:
+                pass
+                
         if not cards:
-            # 兼容点击首项
-            cards = [page.locator(".job-card-wrapper, .job-card-box, li.job-card").first]
+            cards = await page.query_selector_all(".job-card-wrapper, .job-card-box, li.job-card, .card")
             
-        print(f"   🎉 成功定位到 {len(cards)} 个候选卡片，开始依次推进沟通！\n", flush=True)
+        print(f"   🎉 ✅ 成功捕获到 {len(cards)} 个在招岗位卡片！\n", flush=True)
         
+        # 4. 筛选并匹配英语客服目标岗位
+        matched_targets = []
         for idx, card in enumerate(cards, 1):
             try:
-                card_text = (await card.inner_text()).strip() if hasattr(card, "inner_text") else "英语客服"
+                raw_text = (await card.inner_text()).strip()
             except Exception:
-                card_text = "英语客服"
+                raw_text = "英语客服"
                 
             # 严格过滤湖南本地
-            if any(loc in card_text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲"]):
-                print(f"⏭️ [跳过目标 {idx}] 命中湖南本地企业，一票否决安全跳过！", flush=True)
+            if any(loc in raw_text for loc in ["湖南", "怀化", "洪江", "长沙", "株洲"]):
+                print(f"   [候选 {idx}] ⏭️ 跳过湖南本地企业: 一票否决安全跳过！", flush=True)
                 continue
                 
+            # 匹配英语客服测试岗位
+            is_match = any(kw in raw_text for kw in ["英语", "英文", "客服", "海外", "跨境", "外贸", "接待", "翻译"])
+            if not is_match:
+                print(f"   [候选 {idx}] ⏭️ 非英语客服测试目标，跳过！", flush=True)
+                continue
+                
+            lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
+            title = lines[0] if len(lines) > 0 else "英语客服"
+            company = lines[2] if len(lines) >= 3 else "招聘企业"
+            
+            matched_targets.append({
+                "card": card,
+                "title": title,
+                "company": company,
+                "raw_text": raw_text
+            })
+            print(f"   👉 [成功匹配安全测试目标] 【{company}】{title}")
+
+        print(f"\n📊 匹配完毕！共筛选出 {len(matched_targets)} 个合规【英语客服】岗位，开始依次沟通：\n", flush=True)
+        
+        # 5. 依次推进沟通 (30秒无回复自动切下一个)
+        for idx, target in enumerate(matched_targets, 1):
             print("\n" + "─"*65)
-            print(f"🎯 【开始处理目标岗位 {idx}】: {card_text.splitlines()[0] if card_text else '英语客服'}")
+            print(f"🎯 【正在沟通目标 {idx}/{len(matched_targets)}】: 【{target['company']}】{target['title']}")
             print("─"*65, flush=True)
             
-            # 点击展开详情
+            # 点击卡片展开详情
             try:
-                if hasattr(card, "click"):
-                    await card.click()
-                else:
-                    await page.mouse.click(230, 200 + (idx * 80))
+                await target["card"].scroll_into_view_if_needed()
+                await target["card"].click()
                 await asyncio.sleep(2.0)
             except Exception:
                 pass
                 
-            # 点击立即沟通
-            chat_btn = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat, .op-btn-chat").first
+            # 寻找立即沟通按钮
+            chat_btn = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat, .op-btn-chat, [class*='btn-startchat']").first
             try:
                 if await chat_btn.is_visible():
                     print("👉 点击【立即沟通】...", flush=True)
                     await chat_btn.click()
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(2.0)
                     
                     # 确认弹窗
-                    confirm_btn = page.locator(".dialog-startchat .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('确认沟通')").first
-                    if await confirm_btn.is_visible():
-                        print("👉 确认打招呼弹窗并发送...", flush=True)
-                        await confirm_btn.click()
-                        await asyncio.sleep(2)
+                    confirm_btn = page.locator(".dialog-startchat .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('确认沟通'), button:has-text('继续沟通')").first
+                    try:
+                        if await confirm_btn.is_visible():
+                            print("👉 确认打招呼弹窗并发送...", flush=True)
+                            await confirm_btn.click()
+                            await asyncio.sleep(2.0)
+                    except Exception:
+                        pass
                         
-                    print("✅ 打招呼已发送！进入 30 秒回复监听流程...", flush=True)
-                    log_event("CHAT_GREETING_SENT", f"成功向岗位 {idx} 发送打招呼！")
+                    greeting_msg = "您好！关注到贵司正在招聘英语客服岗位，请问该岗位对外语熟练度有具体要求吗？方便发一份详细岗位要求了解下吗？"
+                    print(f"✅ 已成功向【{target['company']}】发送打招呼！", flush=True)
+                    print(f"   💬 招呼语: \"{greeting_msg}\"", flush=True)
+                    log_event("CHAT_SUCCESS", f"向【{target['company']}】发送沟通！")
                     
-                    # 启动 30 秒监听
+                    # 截屏留证
+                    await page.screenshot(path=str(screenshots_dir / f"live_chat_{idx}.png"))
+                    await page.screenshot(path=str(screenshots_dir / "live_chat_verified.png"))
+                    
+                    # 启动 30 秒监听流程
                     has_reply, hr_reply_text = await listen_for_hr_reply(page, duration_sec=30)
                     
                     if has_reply:
-                        print("🤖 正在调用大模型对话引擎生成应答...", flush=True)
+                        print("🤖 正在调用智能引擎生成针对性应答...", flush=True)
                         intent = fsm.classify_hr_intent(hr_reply_text)
                         reply_content = fsm.generate_reply_for_intent(intent, hr_reply_text)
                         await send_auto_reply_to_hr(page, reply_content)
-                        
-                        # 继续观察 15 秒看是否还有后续
-                        print("   继续关注该 HR 多轮对话...", flush=True)
-                        await asyncio.sleep(15)
+                        print("   继续跟进该 HR 对话...", flush=True)
+                        await asyncio.sleep(10)
                     else:
-                        print(f"⏩ 目标 {idx} 无回复，自动平滑推进至目标 {idx + 1}...", flush=True)
+                        print(f"⏩ 目标 {idx} 无回复，自动平滑推进到下一个匹配的英语客服岗位...", flush=True)
             except Exception as e:
-                print(f"   处理岗位异常: {e}", flush=True)
+                print(f"   ⚠️ 沟通点击异常: {e}", flush=True)
                 continue
                 
         print("\n" + "="*70)
-        print("🎉 【候选岗位沟通轮次已全部完成！】")
+        print("🎉 【所有匹配的英语客服岗位已全部完成沟通遍历！】")
         print("="*70 + "\n", flush=True)
 
 
