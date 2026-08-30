@@ -1,9 +1,7 @@
 """
 Rock-Solid Native Live Chat Responder for English CS HRs.
-Features:
-1. Enforces page.bring_to_front() and closes all background about:blank tabs so BOSS 直聘 is permanently in the foreground.
-2. Robust multi-method input focus (Playwright locator, mouse click, and JS focus).
-3. Dual-channel typing (CDP keyboard simulation + InputEvent backup) + Send button & Enter dispatching.
+Uses 100% native Playwright OS-level mouse coordinate clicks to trigger Vue list item selection,
+opens the right chat panel, types via CDP keyboard, and clicks Send.
 """
 import sys
 import os
@@ -81,10 +79,10 @@ async def try_send_resume_attachment(page):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR"""
+    """遍历聊天列表并自动回复 HR (原生物理级鼠标点击与键盘击发)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    # 确保主窗口在前台活跃状态
+    # 确保主窗口置顶前台
     try:
         await page.bring_to_front()
     except Exception:
@@ -115,15 +113,33 @@ async def process_chat_inbox(page, fsm):
         try:
             print(f"\n   🎯 【巡查会话】: {c['text']}", flush=True)
             
-            # 点击选中会话卡片
-            await page.evaluate(f"""(idx) => {{
-                const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
-                if (lis[idx]) {{
-                    lis[idx].click();
-                }}
-            }}""", c["idx"])
-            
-            # 等待右侧聊天视窗渲染
+            # 使用 Playwright 物理鼠标坐标点击该会话项，触发 Vue 展开右侧对话视窗
+            clicked_native = False
+            lis_locator = page.locator('.user-list-content li, .chat-user-list li, ul.user-list li, li')
+            try:
+                count = await lis_locator.count()
+                if c["idx"] < count:
+                    target_card = lis_locator.nth(c["idx"])
+                    await target_card.scroll_into_view_if_needed()
+                    await target_card.click(force=True)
+                    clicked_native = True
+            except Exception:
+                pass
+                
+            if not clicked_native:
+                # 纯 DOM 物理事件派发兜底
+                await page.evaluate(f"""(idx) => {{
+                    const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
+                    const el = lis[idx];
+                    if (el) {{
+                        el.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true, cancelable: true }}));
+                        el.dispatchEvent(new MouseEvent('mouseup', {{ bubbles: true, cancelable: true }}));
+                        el.dispatchEvent(new MouseEvent('click', {{ bubbles: true, cancelable: true }}));
+                        if (el.firstElementChild) el.firstElementChild.click();
+                    }}
+                }}""", c["idx"])
+                
+            # 等待右侧聊天视窗加载完成
             await asyncio.sleep(2.5)
             
             # 2. 读取聊天历史
@@ -166,38 +182,42 @@ async def process_chat_inbox(page, fsm):
             if any(k in last_hr_msg.lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
                 await try_send_resume_attachment(page)
                 
-            # 3. 多策略激活输入框
-            print("      👉 正在激活聊天输入框并键入回复...", flush=True)
-            
-            # 确保置顶在前台
+            # 3. 物理聚焦输入框并打字发送
+            print("      👉 正在激活输入框并进行物理级真机键盘打字...", flush=True)
             await page.bring_to_front()
             
-            # 尝试点击定位器
-            editor_loc = page.locator("#chat-input, div[contenteditable='true'], textarea, [role='textbox'], .chat-input, .chat-editor").first
-            try:
-                if await editor_loc.is_visible():
-                    await editor_loc.click(force=True)
-            except Exception:
-                pass
+            # 物理点击输入框定位器
+            editor_found = False
+            for sel in ["#chat-input", "div[contenteditable='true']", "[role='textbox']", "textarea", ".chat-editor .chat-input", ".chat-input"]:
+                try:
+                    loc = page.locator(sel).first
+                    if await loc.is_visible():
+                        await loc.click(force=True)
+                        editor_found = True
+                        break
+                except Exception:
+                    pass
+                    
+            if not editor_found:
+                # 备用：JS 点击聚焦
+                await page.evaluate("""() => {
+                    const allInputs = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, [role="textbox"], .chat-input');
+                    for (let el of allInputs) {
+                        el.focus();
+                        el.click();
+                    }
+                }""")
                 
-            # JS 强制获取焦点与点击
-            await page.evaluate("""() => {
-                const candidates = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, .chat-input, .chat-editor, [role="textbox"]');
-                for (let el of candidates) {
-                    el.focus();
-                    el.click();
-                }
-            }""")
             await asyncio.sleep(0.3)
             
-            # 4. 键盘按键敲击输入
+            # 4. 键盘按键清空与逐字敲入
             await page.keyboard.press("Control+A")
             await page.keyboard.press("Backspace")
             await asyncio.sleep(0.2)
             await page.keyboard.type(reply_text, delay=20)
             await asyncio.sleep(0.5)
             
-            # 5. DOM 备份注入（确保 Vue 模型绝对非空）
+            # 5. DOM 备份注入（强制 Vue 数据模型同步）
             await page.evaluate(f"""(msg) => {{
                 const candidates = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, .chat-input');
                 for (let el of candidates) {{
@@ -215,7 +235,7 @@ async def process_chat_inbox(page, fsm):
                 }}
             }}""", reply_text)
             
-            # 6. 点击发送按钮并回车击发
+            # 6. 点击发送按钮并物理回车击发
             send_btn = page.locator("button.btn-send, button:has-text('发送'), [class*='btn-send'], .op-btn-send").first
             try:
                 if await send_btn.is_visible():
@@ -223,7 +243,6 @@ async def process_chat_inbox(page, fsm):
             except Exception:
                 pass
                 
-            # 物理 Enter 键发送
             await page.keyboard.press("Enter")
             await asyncio.sleep(2.5)
             print(f"      🎉 ✅ 消息已打字并发送至 HR 视窗！", flush=True)
@@ -309,7 +328,6 @@ async def main():
         while True:
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                # 确保当前页面在消息中心且在前台
                 await page.bring_to_front()
                 if "zhipin.com" not in page.url:
                     await page.goto(chat_url, wait_until="commit", timeout=60000)
