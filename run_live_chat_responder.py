@@ -1,12 +1,13 @@
 """
 Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
 Features:
-1. Exact 3-Step Resume Delivery Pipeline:
+1. Pure Standard JS Selectors in evaluate (0 SyntaxError).
+2. Exact 3-Step Resume Delivery Pipeline:
    - Step 1: Clicks [同意] on official BOSS resume card ("我想要一份您的附件简历，您是否同意").
    - Step 2: Clicks [发送在线简历] on type selection modal.
    - Step 3: Clicks [保存并发送] on the resume preview modal (matching BOSS screenshot exactly).
-2. Zero text message sent after resume dispatch. 100% silent afterwards.
-3. Strict 1-for-1 Dialogue Protocol.
+3. Zero text message sent after resume dispatch. 100% silent afterwards.
+4. Strict 1-for-1 Dialogue Protocol.
 """
 import sys
 import os
@@ -184,13 +185,20 @@ async def process_chat_inbox(page, fsm):
                     }
                 });
                 
-                // 检查卡片是否未处理（包括是否有未点击的同意或保存并发送按钮）
-                const agreeBtn = document.querySelector('button.btn-agree, .dialog-wrap .btn-sure, button:has-text("保存并发送")') || 
-                                 Array.from(document.querySelectorAll('button')).find(b => b.innerText && (b.innerText.includes('同意') || b.innerText.includes('保存并发送')));
+                // 检查卡片是否未处理（使用纯正标准 DOM 语法）
+                let hasAgree = false;
+                const allButtons = document.querySelectorAll('button, div[role="button"], span');
+                for (let b of allButtons) {
+                    const t = b.innerText || '';
+                    if (t.includes('同意') || t.includes('保存并发送')) {
+                        hasAgree = true;
+                        break;
+                    }
+                }
                 
                 return {
                     lastIsMine: isMine,
-                    hasUnhandledCard: !!agreeBtn,
+                    hasUnhandledCard: hasAgree,
                     lastMsg: lastItem.innerText ? lastItem.innerText.trim() : '',
                     hrMsgs: hrMsgs
                 };
