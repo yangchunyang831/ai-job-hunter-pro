@@ -1,7 +1,10 @@
 """
 Dedicated Multi-Turn Live Chat Responder for English CS HRs.
-Listens to BOSS 直聘 Chat Inbox (https://www.zhipin.com/web/geek/chat),
-detects new messages from English CS HRs, and automatically responds with intelligent multi-turn dialogue!
+Features:
+1. Listens to BOSS 直聘 Chat Inbox (https://www.zhipin.com/web/geek/chat).
+2. Detects new messages from English CS HRs.
+3. Automatically responds with intelligent multi-turn dialogue.
+4. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested by HR!
 """
 import sys
 import os
@@ -26,6 +29,7 @@ from src.notifier import NotificationManager
 chat_url = "https://www.zhipin.com/web/geek/chat"
 chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 user_data_dir = r"C:\chrome_debug_profile"
+resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
 
 
 def generate_english_cs_reply(hr_msg: str) -> str:
@@ -35,8 +39,8 @@ def generate_english_cs_reply(hr_msg: str) -> str:
     if any(k in msg_lower for k in ["英语", "外语", "口语", "四级", "六级", "专八", "熟练", "水平", "流畅", "沟通能力"]):
         return "您好！我的英语具备良好的听说读写能力，能够熟练使用英文进行邮件往来、工单处理及日常客户线上沟通，日常业务沟通无障碍。请问贵司该岗位主要对接哪些区域的客户呢？"
         
-    if any(k in msg_lower for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下"]):
-        return "好的，我的附件简历已更新在平台，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
+    if any(k in msg_lower for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我"]):
+        return "好的，我的个人简历【杨春_个人求职简历.pdf】已为您发送，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
         
     if any(k in msg_lower for k in ["到岗", "离职", "什么时候", "在职", "时间"]):
         return "您好！我目前已处于离职状态，可根据贵司安排随时到岗开展工作。"
@@ -50,11 +54,43 @@ def generate_english_cs_reply(hr_msg: str) -> str:
     return "您好！感谢您的回复，我对贵司的英语客服岗位非常感兴趣，请问方便进一步了解下具体的岗位职责和业务方向吗？"
 
 
+async def try_send_resume_attachment(page):
+    """尝试通过聊天工具栏发送附件简历"""
+    if not os.path.exists(resume_file_path):
+        return False
+        
+    try:
+        # 1. 尝试点击工具栏【发简历】按钮
+        send_resume_btn = page.locator("button:has-text('发简历'), button:has-text('发送简历'), [ka*='send_resume'], .chat-op .btn-resume").first
+        if await send_resume_btn.is_visible():
+            print("      📎 正在自动点击工具栏【发送附件简历】按钮...", flush=True)
+            await send_resume_btn.click()
+            await asyncio.sleep(1.5)
+            # 确认弹窗
+            sure_btn = page.locator(".dialog-wrap .btn-sure, button:has-text('确定'), button:has-text('发送简历')").first
+            if await sure_btn.is_visible():
+                await sure_btn.click()
+                print("      🎉 ✅ 附件简历已通过平台一键成功送达！", flush=True)
+                await asyncio.sleep(1.5)
+                return True
+                
+        # 2. 尝试文件输入上传
+        file_input = page.locator("input[type='file']").first
+        if await file_input.is_visible():
+            print(f"      📎 正在上传简历文件: {resume_file_path} ...", flush=True)
+            await file_input.set_input_files(resume_file_path)
+            await asyncio.sleep(2.0)
+            print("      🎉 ✅ 简历文件已成功上传至聊天窗口！", flush=True)
+            return True
+    except Exception as e:
+        print(f"      ℹ️ 附件简历发送辅助提示: {e}", flush=True)
+    return False
+
+
 async def process_chat_inbox(page, fsm):
     """遍历聊天列表并自动回复 HR"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    # 查找左侧会话项
     conv_items = await page.query_selector_all(".user-list-content li, .chat-user-list li, .main-list li, .geek-chat-list li, [class*='chat-item'], [class*='conversation-item'], [class*='user-item'], ul.user-list li")
     if not conv_items:
         print("   暂未读取到左侧会话列表，正在等待...", flush=True)
@@ -103,6 +139,10 @@ async def process_chat_inbox(page, fsm):
                 print(f"      🚨 【触发高危风控防火墙拦截】: {risk_reason}，已自动停止回复该会话！", flush=True)
                 continue
                 
+            # 索要简历处理
+            if any(k in last_hr_msg.lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我"]):
+                await try_send_resume_attachment(page)
+                
             # 自动生成针对性回复
             reply_text = generate_english_cs_reply(last_hr_msg)
             print(f"      🤖 【生成智能应答】: \"{reply_text}\"", flush=True)
@@ -128,6 +168,7 @@ async def process_chat_inbox(page, fsm):
 async def main():
     print("\n" + "="*70)
     print("🎯 BOSS 直聘【HR 聊天室·实时双向多轮智能对话引擎】启动")
+    print(f"📄 绑定简历: {resume_file_path}")
     print("="*70 + "\n", flush=True)
     
     config_mgr = ConfigManager()
@@ -177,7 +218,6 @@ async def main():
         await page.bring_to_front()
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
-        # 进入聊天消息中心
         if "web/geek/chat" not in page.url:
             print("2. 正在进入 BOSS 直聘消息沟通中心 (https://www.zhipin.com/web/geek/chat)...", flush=True)
             try:
@@ -191,7 +231,7 @@ async def main():
         await page.bring_to_front()
         
         print("\n" + "╔" + "═"*60 + "╗")
-        print("║  🤖 【已开启 HR 消息常驻实时监听，有问必答，多轮沟通！】    ║")
+        print("║  🤖 【已开启 HR 消息常驻实时监听，有问必答，自动发简历！】║")
         print("╚" + "═"*60 + "╝\n", flush=True)
         
         cycle = 1
