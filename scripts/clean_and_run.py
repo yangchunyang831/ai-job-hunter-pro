@@ -1,12 +1,5 @@
 """
-Zero-Ban Precision Pipeline (Search Once, Match Target, 30s Timeout Progression).
-Rules:
-1. Search/Navigate EXACTLY ONCE.
-2. Read all cards into memory and match specifically against '英语客服' / '海外客服'.
-3. Exclude Hunan/Huaihua strictly.
-4. For matched cards: Click card -> Click '立即沟通' -> Send greeting -> Wait 30s for HR reply.
-5. If HR replies: Auto-reply via FSM/LLM.
-6. If 30s timeout: Smoothly advance to the next matched English CS card!
+Guaranteed Clean Chrome Launcher & Single-Search Paced Hunter.
 """
 import sys
 import os
@@ -17,9 +10,9 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8")
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config_loader import ConfigManager
 from src.scoring_engine import ScoringEngine
@@ -75,7 +68,7 @@ async def send_auto_reply_to_hr(page, reply_text):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘【单次搜索·30秒无回复自动切岗】实战系统启动")
+    print("🎯 BOSS 直聘【单次搜索·30秒无回复自动切岗】启动")
     print("="*70 + "\n", flush=True)
     
     config_mgr = ConfigManager()
@@ -83,7 +76,7 @@ async def main():
     notifier = NotificationManager()
     fsm = ConversationFSM(config_manager=config_mgr, notifier=notifier)
     
-    screenshots_dir = Path(__file__).resolve().parent / "tests" / "test_screenshots"
+    screenshots_dir = Path(__file__).resolve().parent.parent / "tests" / "test_screenshots"
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     
     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
@@ -101,6 +94,7 @@ async def main():
                 
         if not browser:
             print("1. 正在启动 Chrome 浏览器窗口...", flush=True)
+            # 清理僵死进程
             subprocess.run(["taskkill", "/f", "/im", "chrome.exe"], capture_output=True)
             await asyncio.sleep(1.0)
             
