@@ -2,9 +2,10 @@
 Dedicated Multi-Turn Live Chat Responder for English CS HRs.
 Features:
 1. Listens to BOSS 直聘 Chat Inbox (https://www.zhipin.com/web/geek/chat).
-2. Detects new messages from English CS HRs.
-3. Automatically responds with intelligent multi-turn dialogue.
-4. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested by HR!
+2. Auto-waits for IM WebSocket and conversation list hydration.
+3. Detects new messages from English CS HRs.
+4. Automatically responds with intelligent multi-turn dialogue.
+5. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested by HR!
 """
 import sys
 import os
@@ -60,13 +61,11 @@ async def try_send_resume_attachment(page):
         return False
         
     try:
-        # 1. 尝试点击工具栏【发简历】按钮
         send_resume_btn = page.locator("button:has-text('发简历'), button:has-text('发送简历'), [ka*='send_resume'], .chat-op .btn-resume").first
         if await send_resume_btn.is_visible():
             print("      📎 正在自动点击工具栏【发送附件简历】按钮...", flush=True)
             await send_resume_btn.click()
             await asyncio.sleep(1.5)
-            # 确认弹窗
             sure_btn = page.locator(".dialog-wrap .btn-sure, button:has-text('确定'), button:has-text('发送简历')").first
             if await sure_btn.is_visible():
                 await sure_btn.click()
@@ -74,7 +73,6 @@ async def try_send_resume_attachment(page):
                 await asyncio.sleep(1.5)
                 return True
                 
-        # 2. 尝试文件输入上传
         file_input = page.locator("input[type='file']").first
         if await file_input.is_visible():
             print(f"      📎 正在上传简历文件: {resume_file_path} ...", flush=True)
@@ -91,9 +89,10 @@ async def process_chat_inbox(page, fsm):
     """遍历聊天列表并自动回复 HR"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    conv_items = await page.query_selector_all(".user-list-content li, .chat-user-list li, .main-list li, .geek-chat-list li, [class*='chat-item'], [class*='conversation-item'], [class*='user-item'], ul.user-list li")
+    # 查找左侧会话项
+    conv_items = await page.query_selector_all(".user-list-content li, .chat-user-list li, .main-list li, .geek-chat-list li, [class*='chat-item'], [class*='conversation-item'], [class*='user-item'], ul.user-list li, .user-item")
     if not conv_items:
-        print("   暂未读取到左侧会话列表，正在等待...", flush=True)
+        print("   暂未读取到左侧会话列表，正在等待渲染...", flush=True)
         return
         
     print(f"   📋 发现 {len(conv_items)} 个历史对话记录，开始检查 HR 互动...", flush=True)
@@ -110,16 +109,14 @@ async def process_chat_inbox(page, fsm):
                 
             print(f"\n   👉 [会话 {idx}] {item_text[:70]}", flush=True)
             
-            # 点击该会话展开右侧聊天窗口
+            # 点击展开右侧聊天窗口
             await item.click()
             await asyncio.sleep(2.0)
             
-            # 提取右侧聊天记录
             msg_elems = await page.query_selector_all(".item-friend, .chat-item-hr, .message-card, .chat-message, [class*='item-friend']")
             if not msg_elems:
                 continue
                 
-            # 获取 HR 发送的最后一条消息
             last_hr_msg = ""
             for el in reversed(msg_elems):
                 txt = (await el.inner_text()).strip()
@@ -133,7 +130,7 @@ async def process_chat_inbox(page, fsm):
                 
             print(f"      💬 【捕获到 HR 最新回复】: \"{last_hr_msg}\"", flush=True)
             
-            # 检查是否有高危涉诈词汇
+            # 检查高危涉诈词汇
             is_risky, risk_reason = fsm.check_high_risk_hr_message(last_hr_msg)
             if is_risky:
                 print(f"      🚨 【触发高危风控防火墙拦截】: {risk_reason}，已自动停止回复该会话！", flush=True)
@@ -143,7 +140,6 @@ async def process_chat_inbox(page, fsm):
             if any(k in last_hr_msg.lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我"]):
                 await try_send_resume_attachment(page)
                 
-            # 自动生成针对性回复
             reply_text = generate_english_cs_reply(last_hr_msg)
             print(f"      🤖 【生成智能应答】: \"{reply_text}\"", flush=True)
             
@@ -157,9 +153,11 @@ async def process_chat_inbox(page, fsm):
                 log_event("HR_CHAT_REPLY_SENT", f"成功回复 HR: {reply_text[:30]}")
                 await asyncio.sleep(2.0)
                 
-                # 截屏留证
-                await page.screenshot(path="tests/test_screenshots/live_chat_replied.png")
-                await page.screenshot(path="tests/test_screenshots/live_chat_verified.png")
+                try:
+                    await page.screenshot(path="tests/test_screenshots/live_chat_replied.png")
+                    await page.screenshot(path="tests/test_screenshots/live_chat_verified.png")
+                except Exception:
+                    pass
         except Exception as e:
             print(f"      ⚠️ 处理会话异常: {e}", flush=True)
             continue
@@ -218,15 +216,24 @@ async def main():
         await page.bring_to_front()
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
+        # 加载消息中心并等待彻底水化 (消除 '加载中，请稍候')
         if "web/geek/chat" not in page.url:
             print("2. 正在进入 BOSS 直聘消息沟通中心 (https://www.zhipin.com/web/geek/chat)...", flush=True)
             try:
                 await page.goto(chat_url, wait_until="domcontentloaded", timeout=25000)
             except Exception:
                 pass
-            await asyncio.sleep(3.5)
-        else:
-            print("2. ✅ 当前已处于消息沟通中心！", flush=True)
+        
+        print("2. 正在等待消息中心数据加载就绪...", flush=True)
+        for _ in range(10):
+            await asyncio.sleep(1.0)
+            try:
+                body_txt = await page.evaluate("() => document.body ? document.body.innerText : ''")
+                if "加载中" not in body_txt and len(body_txt) > 20:
+                    print("   🎉 消息中心已彻底加载就绪！", flush=True)
+                    break
+            except Exception:
+                pass
             
         await page.bring_to_front()
         
@@ -238,6 +245,9 @@ async def main():
         while True:
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
+                # 保证页面有效
+                if page.is_closed():
+                    page = context.pages[0] if context.pages else await context.new_page()
                 await process_chat_inbox(page, fsm)
             except Exception as e:
                 print(f"巡检异常: {e}", flush=True)
