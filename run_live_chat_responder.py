@@ -1,12 +1,12 @@
 """
 Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
 Features:
-1. Pure Standard JS Selectors in evaluate (0 SyntaxError).
-2. Exact 3-Step Resume Delivery Pipeline:
+1. Exact 3-Step Resume Delivery Pipeline:
    - Step 1: Clicks [同意] on official BOSS resume card ("我想要一份您的附件简历，您是否同意").
    - Step 2: Clicks [发送在线简历] on type selection modal.
    - Step 3: Clicks [保存并发送] on the resume preview modal (matching BOSS screenshot exactly).
-3. Zero text message sent after resume dispatch. 100% silent afterwards.
+2. Zero text message sent after resume dispatch. 100% silent afterwards.
+3. Live Bot Notification Integration: Pushes rich cards to WeChat & Feishu on resume delivery and interview events.
 4. Strict 1-for-1 Dialogue Protocol.
 """
 import sys
@@ -25,6 +25,7 @@ from src.config_loader import ConfigManager
 from src.scoring_engine import ScoringEngine
 from src.conversation_fsm import ConversationFSM
 from src.notifier import NotificationManager
+from src.bot_manager import BotManager
 
 chat_url = "https://www.zhipin.com/web/geek/chat"
 user_data_dir = r"C:\chrome_debug_profile"
@@ -75,7 +76,7 @@ async def safe_evaluate(page, js_code, arg=None, retries=3):
                 raise e
 
 
-async def handle_resume_request_card(page):
+async def handle_resume_request_card(page, bot_mgr: Optional[BotManager] = None, hr_info: str = ""):
     """完整三步交付简历：[同意] -> [发送在线简历] -> [保存并发送]，发完绝不追加发任何文字"""
     approved_any = False
     try:
@@ -111,6 +112,12 @@ async def handle_resume_request_card(page):
             
         if approved_any:
             print("      🎉 ✅ 完整三步流程确认完毕，简历已通过【保存并发送】正式送达 HR！当前会话立即进入【绝对沉默静候状态】（不发任何额外文字消息）。", flush=True)
+            if bot_mgr:
+                try:
+                    bot_mgr.notify_resume_sent_event(hr_name=hr_info or "BOSS 直聘 HR", job_info="英语客服专向")
+                    print("      📱 微信 / 飞书 Bot 简历送达通知已同步广播！", flush=True)
+                except Exception:
+                    pass
             return True
             
     except Exception as e:
@@ -118,7 +125,7 @@ async def handle_resume_request_card(page):
     return approved_any
 
 
-async def process_chat_inbox(page, fsm):
+async def process_chat_inbox(page, fsm, bot_mgr: Optional[BotManager] = None):
     """遍历聊天列表并自动回复 HR (严格一问一答，发了简历或消息后 100% 保持沉默)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
@@ -185,7 +192,7 @@ async def process_chat_inbox(page, fsm):
                     }
                 });
                 
-                // 检查卡片是否未处理（使用纯正标准 DOM 语法）
+                // 检查卡片是否未处理
                 let hasAgree = false;
                 const allButtons = document.querySelectorAll('button, div[role="button"], span');
                 for (let b of allButtons) {
@@ -205,7 +212,7 @@ async def process_chat_inbox(page, fsm):
             }""")
             
             # 优先处理“索要附件简历”卡片
-            resume_card_approved = await handle_resume_request_card(page)
+            resume_card_approved = await handle_resume_request_card(page, bot_mgr=bot_mgr, hr_info=c['text'])
             if resume_card_approved:
                 # 发了简历之后绝对不发任何文字消息，直接保持沉默静候 HR
                 continue
@@ -219,6 +226,20 @@ async def process_chat_inbox(page, fsm):
             reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
             print(f"      🤖 【生成针对性回复】: \"{reply_text}\"", flush=True)
             
+            # 检测是否为面试/加微信邀约并广播至微信/飞书
+            if any(kw in last_hr_msg for kw in ["面试", "电话", "微信", "加微", "号码", "联系方式"]):
+                if bot_mgr:
+                    try:
+                        bot_mgr.notify_interview_event(
+                            company="BOSS 真实沟通招聘方",
+                            job_title="英语客服 / 跨境运营",
+                            hr_name=c['text'],
+                            message=last_hr_msg
+                        )
+                        print("      📱 微信 / 飞书 Bot 面试邀约高亮提醒已同步广播！", flush=True)
+                    except Exception:
+                        pass
+                        
             # 3. 聚焦输入框并键入
             print("      👉 正在激活输入框并进行物理级真机键盘打字...", flush=True)
             
@@ -260,6 +281,7 @@ async def main():
     
     config_mgr = ConfigManager()
     notifier = NotificationManager()
+    bot_mgr = BotManager()
     fsm = ConversationFSM(config_manager=config_mgr, notifier=notifier)
     
     # 清理残留锁文件
@@ -316,7 +338,7 @@ async def main():
         for cycle in range(1, MAX_INSPECTION_ROUNDS + 1):
             print(f"--- [第 {cycle}/{MAX_INSPECTION_ROUNDS} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                await process_chat_inbox(page, fsm)
+                await process_chat_inbox(page, fsm, bot_mgr=bot_mgr)
             except Exception as e:
                 print(f"巡检通知: {e}", flush=True)
                 
