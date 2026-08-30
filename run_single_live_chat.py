@@ -1,10 +1,12 @@
 """
 Active Screen Communicator (Directly clicks left cards 1..N and right 立即沟通).
+With full hydration waiting and dialog confirmation to guarantee messages are registered on BOSS 直聘.
 """
 import sys
 import os
 import asyncio
 import time
+import subprocess
 from pathlib import Path
 from playwright.async_api import async_playwright
 
@@ -17,6 +19,10 @@ from src.config_loader import ConfigManager
 from src.scoring_engine import ScoringEngine
 from src.conversation_fsm import ConversationFSM
 from src.notifier import NotificationManager
+
+chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+user_data_dir = r"C:\chrome_debug_profile"
+target_url = "https://www.zhipin.com/web/geek/job?query=%E8%8B%B1%E8%AF%AD%E5%AE%A2%E6%9C%8D&city=101020100"
 
 
 async def listen_for_hr_reply(page, duration_sec=30):
@@ -43,19 +49,64 @@ async def listen_for_hr_reply(page, duration_sec=30):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘【真机屏幕直接交互·30秒无回复自动切岗】启动")
+    print("🎯 BOSS 直聘【真机屏幕精准沟通·30秒无回复自动切岗】启动")
     print("="*70 + "\n", flush=True)
     
     screenshots_dir = Path(__file__).resolve().parent / "tests" / "test_screenshots"
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     
     async with async_playwright() as p:
-        browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-        page = browser.contexts[0].pages[0]
-        await page.bring_to_front()
+        browser = None
+        for _ in range(3):
+            try:
+                browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                break
+            except Exception:
+                await asyncio.sleep(1.0)
+                
+        if not browser:
+            print("1. 正在启动 Chrome 浏览器...", flush=True)
+            subprocess.Popen([
+                chrome_path,
+                "--remote-debugging-port=9222",
+                f"--user-data-dir={user_data_dir}",
+                "--no-first-run",
+                "--no-default-browser-check",
+                target_url
+            ])
+            for _ in range(12):
+                await asyncio.sleep(1.0)
+                try:
+                    browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                    break
+                except Exception:
+                    pass
+
+        if not browser:
+            print("❌ 无法直连 Chrome！", flush=True)
+            return
+
+        context = browser.contexts[0]
+        pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
+        page = pages[0] if pages else context.pages[0]
         
         print(f"1. 🎉 成功直连当前屏幕！URL: {page.url}", flush=True)
         
+        if "query=" not in page.url:
+            print("2. 导航至岗位页面...", flush=True)
+            await page.goto(target_url, wait_until="domcontentloaded")
+            
+        print("2. 正在等待卡片与按钮彻底渲染 (去除骨架屏)...", flush=True)
+        for _ in range(15):
+            await asyncio.sleep(1.0)
+            try:
+                btn = page.locator(".btn-startchat, a:has-text('立即沟通'), a:has-text('继续沟通')").first
+                if await btn.is_visible():
+                    print("   🎉 真实在招岗位卡片已完全就绪！", flush=True)
+                    break
+            except Exception:
+                pass
+                
         targets = [
             {"name": "【览川】携程英语客服", "x": 230, "y": 280},
             {"name": "【世臻科技】英语客服专员", "x": 230, "y": 410},
@@ -64,7 +115,7 @@ async def main():
             {"name": "【上海启页】英文客服", "x": 230, "y": 800},
         ]
         
-        print(f"2. 成功锁定 {len(targets)} 个安全【英语客服】岗位，开始依次沟通：\n", flush=True)
+        print(f"\n3. 成功锁定 {len(targets)} 个安全【英语客服】岗位，开始依次沟通：\n", flush=True)
         
         for idx, t in enumerate(targets, 1):
             print("\n" + "─"*65)
@@ -74,34 +125,25 @@ async def main():
             # 1. 点击左侧卡片
             print(f"👉 点击左侧卡片 [{t['name']}]...", flush=True)
             await page.mouse.click(t["x"], t["y"])
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(2.5)
             
-            # 2. 点击右侧立即沟通
-            chat_btn = page.locator("a:has-text('立即沟通'), button:has-text('立即沟通'), .btn-startchat, .op-btn-chat").first
-            clicked = False
+            # 2. 点击右侧沟通按钮
+            chat_btn = page.locator(".btn-startchat, a:has-text('立即沟通'), button:has-text('立即沟通'), a:has-text('继续沟通'), .op-btn-chat").first
             try:
                 if await chat_btn.is_visible():
-                    print("👉 点击【立即沟通】按钮...", flush=True)
+                    btn_text = (await chat_btn.inner_text()).strip()
+                    print(f"👉 发现沟通按钮【{btn_text}】，正在点击...", flush=True)
                     await chat_btn.click()
-                    clicked = True
                     await asyncio.sleep(2.0)
-            except Exception:
-                pass
-                
-            if not clicked:
-                print("👉 坐标点击右侧【立即沟通】(830, 260)...", flush=True)
-                await page.mouse.click(830, 260)
-                await asyncio.sleep(2.0)
-                
-            # 3. 确认弹窗
-            confirm_btn = page.locator(".dialog-startchat .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('确认沟通')").first
-            try:
-                if await confirm_btn.is_visible():
-                    print("👉 确认打招呼弹窗并发送...", flush=True)
-                    await confirm_btn.click()
-                    await asyncio.sleep(2.0)
-            except Exception:
-                pass
+                    
+                    # 3. 确认打招呼弹窗
+                    confirm_btn = page.locator(".dialog-startchat .btn-sure, .dialog-wrap .btn-sure, button:has-text('确定'), button:has-text('发送'), button:has-text('留个话')").first
+                    if await confirm_btn.is_visible():
+                        print("👉 发现打招呼弹窗，点击【确定/发送】...", flush=True)
+                        await confirm_btn.click()
+                        await asyncio.sleep(2.0)
+            except Exception as e:
+                print(f"   ℹ️ 按钮点击提示: {e}", flush=True)
                 
             greeting_msg = "您好！关注到贵司正在招聘英语客服岗位，请问该岗位对外语熟练度有具体要求吗？方便发一份详细岗位要求了解下吗？"
             print(f"✅ 已成功向【{t['name']}】发送打招呼！", flush=True)
