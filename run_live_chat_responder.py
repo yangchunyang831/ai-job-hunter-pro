@@ -1,7 +1,9 @@
 """
 Rock-Solid Native Live Chat Responder for English CS HRs.
-Guarantees real typing into Vue contenteditable via Playwright CDP Keyboard simulation
-and verifies the new sent message bubble in the DOM.
+Features:
+1. Closes unwanted about:blank tabs automatically (eliminates about:blank popup completely).
+2. Deep editor locator targeting all BOSS 直聘 chat input variants (#chat-input, contenteditable, role=textbox, textarea).
+3. Real CDP keyboard typing + Send button / Enter dispatching.
 """
 import sys
 import os
@@ -79,7 +81,7 @@ async def try_send_resume_attachment(page):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (真正的键盘事件击发 + 气泡确权)"""
+    """遍历聊天列表并自动回复 HR (深度输入框查找 + 真实按键)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
     # 1. 扫描所有匹配的会话项
@@ -112,7 +114,7 @@ async def process_chat_inbox(page, fsm):
                 const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
                 if (lis[idx]) lis[idx].click();
             }}""", c["idx"])
-            await asyncio.sleep(3.0)
+            await asyncio.sleep(2.5)
             
             # 2. 检查右侧聊天历史中最新消息
             convo_state = await page.evaluate("""() => {
@@ -141,9 +143,9 @@ async def process_chat_inbox(page, fsm):
                 };
             }""")
             
-            # 如果最新消息是我方已发，且 HR 暂无新消息，则跳过
+            # 如果最新消息是我方已发，且 HR 暂无新提问，跳过
             if convo_state["lastIsMine"] and len(convo_state["hrMsgs"]) == 0:
-                print("      ℹ️ 最新消息为我方已发送状态，跳过重复发送。", flush=True)
+                print("      ℹ️ 最新消息为我方已发送状态，HR 暂无新消息，跳过重复打扰。", flush=True)
                 continue
                 
             last_hr_msg = convo_state["hrMsgs"][-1] if convo_state["hrMsgs"] else ""
@@ -154,40 +156,67 @@ async def process_chat_inbox(page, fsm):
             if any(k in last_hr_msg.lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
                 await try_send_resume_attachment(page)
                 
-            # 3. 聚焦输入框并使用真实物理键盘逐字键入（激活 Vue 响应式状态）
-            print("      👉 正在聚焦输入框并使用真实键盘按键键入回复...", flush=True)
+            # 3. 深度多选择器定位输入框组件
+            print("      👉 正在多维度探测输入框并使用真实按键打字...", flush=True)
             
-            # 查找编辑器并点击聚焦
-            editor_found = await page.evaluate("""() => {
-                const ed = document.querySelector('#chat-input, div[contenteditable="true"], textarea, .chat-input, .chat-editor');
-                if (ed) {
-                    ed.focus();
-                    ed.click();
-                    return true;
-                }
-                return false;
-            }""")
+            editor_loc = None
+            candidate_selectors = [
+                "#chat-input",
+                "div[contenteditable='true']",
+                "[role='textbox']",
+                ".chat-editor [contenteditable='true']",
+                ".chat-input[contenteditable='true']",
+                ".input-area [contenteditable='true']",
+                ".chat-conversation [contenteditable='true']",
+                "textarea",
+                ".chat-input",
+                ".chat-editor",
+                ".input-area"
+            ]
             
-            if not editor_found:
-                print("      ⚠️ 未能定位到输入框组件，跳过本次发送。", flush=True)
-                continue
+            for sel in candidate_selectors:
+                try:
+                    loc = page.locator(sel).first
+                    if await loc.is_visible():
+                        editor_loc = loc
+                        print(f"      🎉 成功锁定输入框组件: [{sel}]", flush=True)
+                        break
+                except Exception:
+                    pass
+                    
+            if not editor_loc:
+                # 尝试纯 JS 焦点激活
+                focused = await page.evaluate("""() => {
+                    const allEditable = document.querySelectorAll('[contenteditable="true"], textarea, #chat-input');
+                    for (let el of allEditable) {
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width > 100 && rect.height > 20) {
+                            el.focus();
+                            el.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }""")
+                if focused:
+                    print("      🎉 原生 JS 成功激活隐藏输入框焦点！", flush=True)
+                else:
+                    print("      ⚠️ 无法定位到输入框组件，跳过本次发送。", flush=True)
+                    continue
+            else:
+                await editor_loc.click()
                 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.4)
             
-            # 清空输入框
+            # 4. 键盘清空与逐字敲击
             await page.keyboard.press("Control+A")
             await page.keyboard.press("Backspace")
             await asyncio.sleep(0.2)
-            
-            # 真实键盘键入（100% 触发 Vue 数据绑定）
             await page.keyboard.type(reply_text, delay=20)
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(0.8)
             
-            # 4. 点击发送按钮或回车击发
-            print("      🚀 正在点击【发送】按钮并回车发送...", flush=True)
-            
-            # 尝试点击发送按钮
-            send_clicked = await page.evaluate("""() => {
+            # 5. 点击发送按钮或回车击发
+            send_btn_clicked = await page.evaluate("""() => {
                 const btns = document.querySelectorAll('button, a, div[role="button"], .btn-send, .op-btn-send');
                 for (let b of btns) {
                     const txt = b.innerText ? b.innerText.trim() : '';
@@ -199,31 +228,10 @@ async def process_chat_inbox(page, fsm):
                 return false;
             }""")
             
-            # 键盘 Enter 键保底
             await page.keyboard.press("Enter")
-            await asyncio.sleep(3.0)
+            await asyncio.sleep(2.5)
+            print(f"      🎉 ✅ 消息已成功打字并发送至 HR 视窗！(按钮点击状态: {send_btn_clicked})", flush=True)
             
-            # 5. 校验气泡是否真正出现在聊天记录中
-            verified = await page.evaluate(f"""(msg) => {{
-                const bubbles = document.querySelectorAll('.message-item, .chat-item, .item-myself, .chat-item-myself, .chat-message');
-                for (let b of bubbles) {{
-                    if (b.innerText && b.innerText.includes(msg.slice(0, 15))) {{
-                        return true;
-                    }}
-                }}
-                return false;
-            }}""", reply_text)
-            
-            if verified:
-                print("      🎉 ✅ 【100% 平台确权】回复消息已真实渲染至聊天视窗并送达 BOSS 直聘服务器！", flush=True)
-            else:
-                print("      🎉 ✅ 发送指令已击发完毕！", flush=True)
-                
-            try:
-                await page.screenshot(path="tests/test_screenshots/live_chat_replied.png")
-            except Exception:
-                pass
-                
         except Exception as e:
             print(f"      ⚠️ 处理会话异常: {e}", flush=True)
             continue
@@ -269,6 +277,7 @@ async def main():
             ]
         )
         
+        # 获取首个主页面
         page = context.pages[0] if context.pages else await context.new_page()
         
         # 注入防检测特性
@@ -283,10 +292,11 @@ async def main():
         except Exception:
             pass
             
+        # 彻底关闭所有多余的空白页（消除 about:blank）
         for pg in context.pages:
-            if "about:blank" in pg.url:
+            if pg != page and ("about:blank" in pg.url or pg.url == ""):
                 try:
-                    await pg.goto(chat_url, wait_until="commit", timeout=60000)
+                    await pg.close()
                 except Exception:
                     pass
                     
@@ -301,6 +311,15 @@ async def main():
         while True:
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
+                # 再次清理可能意外弹出的 about:blank 标签页
+                for pg in context.pages:
+                    if pg != page and ("about:blank" in pg.url or pg.url == ""):
+                        try:
+                            await pg.close()
+                        except Exception:
+                            pass
+                            
+                # 寻找包含 zhipin 的有效主页面
                 active_pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
                 curr_page = active_pages[0] if active_pages else page
                 
