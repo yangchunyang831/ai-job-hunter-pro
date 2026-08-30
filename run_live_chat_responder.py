@@ -1,5 +1,6 @@
 """
-Direct Persistent Multi-Turn Live Chat Responder for English CS HRs.
+Bulletproof Live Multi-Turn Chat Responder for English CS HRs.
+Connects directly to the live Chrome window on port 9222.
 Features:
 1. Strict Geofencing: 100% BLOCKS Hunan / Changsha / Huaihua / Hongjiang.
 2. Target Filtering: ONLY communicates with HRs of 英语客服 / 英文客服 / 海外客服.
@@ -8,6 +9,7 @@ Features:
 """
 import sys
 import os
+import subprocess
 import asyncio
 import time
 from pathlib import Path
@@ -24,6 +26,7 @@ from src.conversation_fsm import ConversationFSM
 from src.notifier import NotificationManager
 
 chat_url = "https://www.zhipin.com/web/geek/chat"
+chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 user_data_dir = r"C:\chrome_debug_profile"
 resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
 
@@ -193,18 +196,46 @@ async def main():
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     
     async with async_playwright() as p:
-        print("1. 正在启动 Chrome 浏览器...", flush=True)
-        context = await p.chromium.launch_persistent_context(
-            user_data_dir=user_data_dir,
-            headless=False,
-            channel="chrome",
-            args=["--no-first-run", "--no-default-browser-check"]
-        )
+        browser = None
+        for _ in range(3):
+            try:
+                browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                break
+            except Exception:
+                await asyncio.sleep(1.0)
+                
+        if not browser:
+            print("1. 正在启动 Chrome 浏览器并直达 BOSS 直聘消息沟通中心...", flush=True)
+            subprocess.Popen([
+                chrome_path,
+                "--remote-debugging-port=9222",
+                f"--user-data-dir={user_data_dir}",
+                "--no-first-run",
+                "--no-default-browser-check",
+                chat_url
+            ])
+            for _ in range(12):
+                await asyncio.sleep(1.0)
+                try:
+                    browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                    break
+                except Exception:
+                    pass
+
+        if not browser:
+            print("❌ 无法直连 Chrome！", flush=True)
+            return
+
+        context = browser.contexts[0]
+        pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
+        page = pages[0] if pages else context.pages[0]
+            
+        print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
-        page = context.pages[0] if context.pages else await context.new_page()
-        
-        print("2. 正在进入消息沟通中心 (https://www.zhipin.com/web/geek/chat)...", flush=True)
-        await page.goto(chat_url, wait_until="domcontentloaded")
+        # 确保直达消息中心
+        if "web/geek/chat" not in page.url:
+            print("2. 正在直达页面: https://www.zhipin.com/web/geek/chat ...", flush=True)
+            await page.goto(chat_url, wait_until="domcontentloaded")
             
         print("2. 正在等待消息中心数据加载就绪...", flush=True)
         for _ in range(15):
