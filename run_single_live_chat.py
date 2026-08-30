@@ -101,9 +101,6 @@ async def main():
                 
         if not browser:
             print("1. 正在启动 Chrome 浏览器窗口...", flush=True)
-            subprocess.run(["taskkill", "/f", "/im", "chrome.exe"], capture_output=True)
-            await asyncio.sleep(1.0)
-            
             subprocess.Popen([
                 chrome_path,
                 "--remote-debugging-port=9222",
@@ -125,11 +122,18 @@ async def main():
             return
 
         context = browser.contexts[0]
-        page = context.pages[0] if context.pages else await context.new_page()
+        page = None
+        for p_cand in context.pages:
+            if "zhipin.com" in p_cand.url:
+                page = p_cand
+                break
+        if not page:
+            page = context.pages[0] if context.pages else await context.new_page()
+            
         await page.bring_to_front()
-        
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
+        # 单次导航，绝不重复发送请求
         if "web/geek/jobs" not in page.url or "101020100" not in page.url:
             print(f"2. 正在执行单次精准加载: 【上海·英语客服】...", flush=True)
             try:
@@ -151,17 +155,23 @@ async def main():
             try:
                 card_elems = await page.query_selector_all(".job-card-wrapper, .job-card-box, li.job-card, .job-list-box li, [class*='job-card']")
                 for c in card_elems:
-                    txt = (await c.inner_text()).strip()
-                    if len(txt) > 15 and any(k in txt for k in ["K", "k", "薪", "元", "面议"]):
-                        if c not in cards:
-                            cards.append(c)
+                    try:
+                        txt = (await c.inner_text()).strip()
+                        if len(txt) > 15 and any(k in txt for k in ["K", "k", "薪", "元", "面议"]):
+                            if c not in cards:
+                                cards.append(c)
+                    except Exception:
+                        pass
                 if cards:
                     break
             except Exception:
                 pass
                 
         if not cards:
-            cards = await page.query_selector_all(".job-card-wrapper, .job-card-box, li.job-card, .card")
+            try:
+                cards = await page.query_selector_all(".job-card-wrapper, .job-card-box, li.job-card, .card")
+            except Exception:
+                pass
             
         print(f"   🎉 ✅ 成功捕获到 {len(cards)} 个在招岗位卡片！\n", flush=True)
         
@@ -228,8 +238,11 @@ async def main():
                     print(f"   💬 招呼语: \"{greeting_msg}\"", flush=True)
                     log_event("CHAT_SUCCESS", f"向【{target['company']}】发送沟通！")
                     
-                    await page.screenshot(path=str(screenshots_dir / "live_chat_verified.png"))
-                    
+                    try:
+                        await page.screenshot(path=str(screenshots_dir / "live_chat_verified.png"))
+                    except Exception:
+                        pass
+                        
                     has_reply, hr_reply_text = await listen_for_hr_reply(page, duration_sec=30)
                     
                     if has_reply:
@@ -248,6 +261,9 @@ async def main():
         print("\n" + "="*70)
         print("🎉 【所有匹配的英语客服岗位已全部完成沟通遍历！】")
         print("="*70 + "\n", flush=True)
+        
+        while True:
+            await asyncio.sleep(5)
 
 
 if __name__ == "__main__":
