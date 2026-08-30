@@ -1,8 +1,8 @@
 """
 Full AI Candidate Persona Dialogue Engine for Live HR Chatting on BOSS 直聘.
 Features:
-1. AI Persona: Acts 100% as candidate 杨春 (Blockchain Eng bachelor, English CS / Operations target, C1 license, immediate availability).
-2. Deep LLM + High-EQ Rule fallback: Generates context-aware, tailored replies to ANY HR question.
+1. Honest, Grounded AI Persona: Pragmatic bachelor graduate (Yang Chun), strong learning ability, customer service mindset, immediate availability, C1 license, realistic language profile.
+2. Safe Sandbox Stress-Testing: Handles English CS and general service HR dialogues realistically without exaggerated claims.
 3. Official 3-Step Resume Dispatch: Automatically approves and delivers resume when requested.
 4. Strict 1-for-1 Dialogue Protocol: Never speaks unless HR speaks first; 100% silent after reply.
 5. Zero about:blank, 100% stable persistent session.
@@ -45,7 +45,7 @@ def is_english_cs_conversation(text: str) -> bool:
 
 
 def generate_ai_candidate_reply(hr_msg: str, fsm: Optional[ConversationFSM] = None, hr_name: str = "") -> str:
-    """以求职者【杨春】第一人称生成高情商、精准专业的自荐与应答话术"""
+    """以求职者【杨春】第一人称生成务实、真诚、高情商的自荐与应答话术"""
     msg_lower = hr_msg.lower()
     
     # 1. 询问到岗时间/离职状态
@@ -56,9 +56,9 @@ def generate_ai_candidate_reply(hr_msg: str, fsm: Optional[ConversationFSM] = No
     if any(k in msg_lower for k in ["接受", "排班", "夜班", "晚班", "轮休", "做五休二", "加班", "轮班", "休假"]):
         return "您好！我可以完全接受公司的正规排班与轮休制度，具备良好的团队协作与抗压能力。"
         
-    # 3. 询问英语水平/英文工单处理能力
+    # 3. 询问语言/英语水平/英文工单处理能力（客观务实，强调学习力与工单操作）
     if any(k in msg_lower for k in ["英语", "英文", "水平", "口语", "读写", "工单", "邮件", "专四", "六级", "cet"]):
-        return "您好！我具备良好的英语听说读写能力，能够熟练处理英文客户工单、邮件往来及日常线上沟通，能准确理解客户诉求并高效解决问题。"
+        return "您好！我具备基础的英文读写与工单查阅能力，熟练掌握计算机操作与办公协同系统，学习适应能力强，能快速熟悉并上手具体业务。"
         
     # 4. 询问面试/约聊/会议沟通
     if any(k in msg_lower for k in ["面试", "电话", "聊聊", "会议", "现场", "视频", "几点", "方便", "腾讯会议"]):
@@ -66,14 +66,14 @@ def generate_ai_candidate_reply(hr_msg: str, fsm: Optional[ConversationFSM] = No
         
     # 5. 询问期望薪资
     if any(k in msg_lower for k in ["薪资", "待遇", "多少钱", "期望", "待遇要求", "工资"]):
-        return "您好！我对贵司该岗位的期望薪资在 7k-11k 区间（结合具体排班与绩效），更看重平台的发展空间与团队氛围，具体可根据公司薪酬体系面议。"
+        return "您好！我对贵司该岗位的期望薪资在 6k-9k 左右（结合具体排班与绩效补贴），更看重平台的发展空间与团队氛围，具体可根据公司薪酬体系面议。"
         
     # 6. 询问学历与专业背景
     if any(k in msg_lower for k in ["学历", "专业", "学校", "统招", "本科", "区块链"]):
-        return "您好！我是全日制统招本科学历（区块链工程专业），学习与逻辑思维能力强，持有 C1 驾驶证，能快速熟悉并上手各类业务系统。"
+        return "您好！我是全日制统招本科学历（区块链工程专业），学习与逻辑思维能力强，持有 C1 驾驶证，踏实负责。"
         
-    # 7. 兜底高情商自荐回复
-    return "您好！关注到贵司的岗位需求，我的英语听说读写能力良好，能熟练处理英文工单与日常客户线上沟通，请问方便进一步了解下具体的岗位职责和业务方向吗？"
+    # 7. 兜底高情商自荐回复（客观踏实）
+    return "您好！关注到贵司的岗位需求，我的学习与沟通理解能力强，态度积极踏实，请问方便进一步了解下具体的岗位职责和业务方向吗？"
 
 
 async def safe_evaluate(page, js_code, arg=None, retries=3):
@@ -129,7 +129,7 @@ async def handle_resume_request_card(page, bot_mgr: Optional[BotManager] = None,
             print("      🎉 ✅ 完整三步流程确认完毕，简历已通过【保存并发送】正式送达 HR！AI 已自动进入【绝对沉默静候状态】。", flush=True)
             if bot_mgr:
                 try:
-                    bot_mgr.notify_resume_sent_event(hr_name=hr_info or "BOSS 直聘 HR", job_info="英语客服专向")
+                    bot_mgr.notify_resume_sent_event(hr_name=hr_info or "BOSS 直聘 HR", job_info="客服/运营岗位")
                 except Exception:
                     pass
             return True
@@ -164,10 +164,10 @@ async def process_chat_inbox(page, fsm: Optional[ConversationFSM] = None, bot_mg
         return
         
     if not matched_convos:
-        print("   暂未扫描到符合条件的英语客服 HR 目标，等待下轮巡检...", flush=True)
+        print("   暂未扫描到符合条件的 HR 目标，等待下轮巡检...", flush=True)
         return
         
-    print(f"   📋 扫描到 {len(matched_convos)} 个符合条件的英语客服 HR 会话，AI 开始逐一代聊巡查...", flush=True)
+    print(f"   📋 扫描到 {len(matched_convos)} 个符合条件的 HR 会话，AI 开始逐一代聊巡查...", flush=True)
     
     for c in matched_convos:
         try:
@@ -239,7 +239,7 @@ async def process_chat_inbox(page, fsm: Optional[ConversationFSM] = None, bot_mg
             last_hr_msg = convo_state["hrMsgs"][-1] if convo_state["hrMsgs"] else ""
             print(f"      📩 【HR 最新提问/消息】: \"{last_hr_msg}\"", flush=True)
             
-            # AI 代替求职者杨春思考并生成最佳高情商应答
+            # AI 代替求职者杨春思考并生成客观务实的高情商应答
             reply_text = generate_ai_candidate_reply(last_hr_msg or "请问方便了解岗位要求吗？", fsm=fsm, hr_name=c['text'])
             print(f"      🤖 【AI 替身代聊生成回复】: \"{reply_text}\"", flush=True)
             
@@ -276,7 +276,7 @@ async def process_chat_inbox(page, fsm: Optional[ConversationFSM] = None, bot_mg
 async def main():
     print("\n" + "="*70)
     print("🎯 BOSS 直聘【HR 聊天室·AI 替身全自动多轮对话与代聊引擎】")
-    print(f"👤 代聊求职者: 杨春 (区块链工程本科 / 英语客服专向)")
+    print(f"👤 实战沙箱模式: 模拟客服/运营岗位压力测试")
     print(f"🛡️ 湖南本地 100% 隔离 | 📄 绑定简历: {resume_file_path}")
     print(f"⏱️ 巡检模式: 有限轮巡检（共 {MAX_INSPECTION_ROUNDS} 轮，完成后自动退出）")
     print("="*70 + "\n", flush=True)
@@ -334,7 +334,7 @@ async def main():
         await asyncio.sleep(5.0)
         
         print("\n" + "╔" + "═"*60 + "╗")
-        print(f"║  🤖 【已开启：AI 替身代聊应答【欧阳先生/翟先生】！】     ║")
+        print(f"║  🤖 【已开启：AI 替身代聊应答（实战沙箱测试模式）】       ║")
         print("╚" + "═"*60 + "╝\n", flush=True)
         
         for cycle in range(1, MAX_INSPECTION_ROUNDS + 1):
@@ -345,7 +345,7 @@ async def main():
                 print(f"巡检通知: {e}", flush=True)
                 
             if cycle < MAX_INSPECTION_ROUNDS:
-                print(f"⏳ 正在守候英语客服 HR 新消息中... (15 秒后执行第 {cycle+1} 轮检查)", flush=True)
+                print(f"⏳ 正在守候 HR 新消息中... (15 秒后执行第 {cycle+1} 轮检查)", flush=True)
                 await asyncio.sleep(15)
                 
         print("\n" + "="*70)
