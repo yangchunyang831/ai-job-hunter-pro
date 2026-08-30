@@ -54,7 +54,8 @@ async def process_chat_inbox(page, fsm):
     """遍历聊天列表并自动回复 HR"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    conv_items = await page.query_selector_all(".user-list-content li, .chat-user-list li, .main-list li, [class*='chat-item'], [class*='conversation-item'], [class*='user-item']")
+    # 查找左侧会话项
+    conv_items = await page.query_selector_all(".user-list-content li, .chat-user-list li, .main-list li, .geek-chat-list li, [class*='chat-item'], [class*='conversation-item'], [class*='user-item'], ul.user-list li")
     if not conv_items:
         print("   暂未读取到左侧会话列表，正在等待...", flush=True)
         return
@@ -161,7 +162,7 @@ async def main():
                     pass
 
         if not browser:
-            print("❌ 无法直连 Chrome！", flush=True)
+            print("❌ 无法直连 Chrome，请双击 start_auto_chat_responder.bat 后重试！", flush=True)
             return
 
         context = browser.contexts[0]
