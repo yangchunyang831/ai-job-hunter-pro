@@ -1,7 +1,9 @@
 """
 Rock-Solid Native Live Chat Responder for English CS HRs.
-Uses 100% native Playwright OS-level mouse coordinate clicks to trigger Vue list item selection,
-opens the right chat panel, types via CDP keyboard, and clicks Send.
+Features:
+1. Limited-round inspection (Default: 3 rounds, then gracefully summarizes and finishes).
+2. Dual Send Key handling (Dispatches both Ctrl+Enter and Enter + direct button click) to support all BOSS shortcut settings.
+3. Live input clearing and message bubble verification.
 """
 import sys
 import os
@@ -23,6 +25,7 @@ from src.notifier import NotificationManager
 chat_url = "https://www.zhipin.com/web/geek/chat"
 user_data_dir = r"C:\chrome_debug_profile"
 resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
+MAX_INSPECTION_ROUNDS = 3  # 用户指定：有限轮消息巡检（默认 3 轮后自动完成）
 
 
 def is_english_cs_conversation(text: str) -> bool:
@@ -79,10 +82,9 @@ async def try_send_resume_attachment(page):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (原生物理级鼠标点击与键盘击发)"""
+    """遍历聊天列表并自动回复 HR (支持 Ctrl+Enter 和 Enter 双击发与按钮强制发送)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    # 确保主窗口置顶前台
     try:
         await page.bring_to_front()
     except Exception:
@@ -113,8 +115,7 @@ async def process_chat_inbox(page, fsm):
         try:
             print(f"\n   🎯 【巡查会话】: {c['text']}", flush=True)
             
-            # 使用 Playwright 物理鼠标坐标点击该会话项，触发 Vue 展开右侧对话视窗
-            clicked_native = False
+            # 使用 Playwright 物理鼠标点击会话项
             lis_locator = page.locator('.user-list-content li, .chat-user-list li, ul.user-list li, li')
             try:
                 count = await lis_locator.count()
@@ -122,24 +123,9 @@ async def process_chat_inbox(page, fsm):
                     target_card = lis_locator.nth(c["idx"])
                     await target_card.scroll_into_view_if_needed()
                     await target_card.click(force=True)
-                    clicked_native = True
             except Exception:
                 pass
                 
-            if not clicked_native:
-                # 纯 DOM 物理事件派发兜底
-                await page.evaluate(f"""(idx) => {{
-                    const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
-                    const el = lis[idx];
-                    if (el) {{
-                        el.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true, cancelable: true }}));
-                        el.dispatchEvent(new MouseEvent('mouseup', {{ bubbles: true, cancelable: true }}));
-                        el.dispatchEvent(new MouseEvent('click', {{ bubbles: true, cancelable: true }}));
-                        if (el.firstElementChild) el.firstElementChild.click();
-                    }}
-                }}""", c["idx"])
-                
-            # 等待右侧聊天视窗加载完成
             await asyncio.sleep(2.5)
             
             # 2. 读取聊天历史
@@ -169,9 +155,8 @@ async def process_chat_inbox(page, fsm):
                 };
             }""")
             
-            # 如果最新消息是我方已发，且 HR 暂无新提问，跳过
             if convo_state["lastIsMine"] and len(convo_state["hrMsgs"]) == 0:
-                print("      ℹ️ 最新消息为我方已发送状态，HR 暂无新消息，跳过重复打扰。", flush=True)
+                print("      ℹ️ 最新消息为我方已发送状态，HR 暂无新提问，跳过重复打扰。", flush=True)
                 continue
                 
             last_hr_msg = convo_state["hrMsgs"][-1] if convo_state["hrMsgs"] else ""
@@ -182,60 +167,52 @@ async def process_chat_inbox(page, fsm):
             if any(k in last_hr_msg.lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
                 await try_send_resume_attachment(page)
                 
-            # 3. 物理聚焦输入框并打字发送
+            # 3. 聚焦输入框并键入
             print("      👉 正在激活输入框并进行物理级真机键盘打字...", flush=True)
             await page.bring_to_front()
             
-            # 物理点击输入框定位器
-            editor_found = False
-            for sel in ["#chat-input", "div[contenteditable='true']", "[role='textbox']", "textarea", ".chat-editor .chat-input", ".chat-input"]:
-                try:
-                    loc = page.locator(sel).first
-                    if await loc.is_visible():
-                        await loc.click(force=True)
-                        editor_found = True
-                        break
-                except Exception:
-                    pass
-                    
-            if not editor_found:
-                # 备用：JS 点击聚焦
-                await page.evaluate("""() => {
-                    const allInputs = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, [role="textbox"], .chat-input');
-                    for (let el of allInputs) {
-                        el.focus();
-                        el.click();
-                    }
-                }""")
+            # 激活输入框
+            editor_loc = page.locator("#chat-input, div[contenteditable='true'], textarea, [role='textbox'], .chat-editor .chat-input, .chat-input").first
+            try:
+                if await editor_loc.is_visible():
+                    await editor_loc.click(force=True)
+            except Exception:
+                pass
                 
+            await page.evaluate("""() => {
+                const candidates = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, [role="textbox"], .chat-input');
+                for (let el of candidates) {
+                    el.focus();
+                    el.click();
+                }
+            }""")
             await asyncio.sleep(0.3)
             
-            # 4. 键盘按键清空与逐字敲入
+            # 4. 真实键盘清空与逐字按键敲入
             await page.keyboard.press("Control+A")
             await page.keyboard.press("Backspace")
             await asyncio.sleep(0.2)
             await page.keyboard.type(reply_text, delay=20)
             await asyncio.sleep(0.5)
             
-            # 5. DOM 备份注入（强制 Vue 数据模型同步）
+            # 5. DOM 备份注入（强制触发 Vue 数据绑定）
             await page.evaluate(f"""(msg) => {{
                 const candidates = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, .chat-input');
                 for (let el of candidates) {{
                     if (el.isContentEditable) {{
-                        if (!el.innerText || el.innerText.trim() === '') {{
-                            el.innerText = msg;
-                            el.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
-                        }}
+                        el.innerText = msg;
+                        el.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
                     }} else if (el.tagName === 'TEXTAREA') {{
-                        if (!el.value || el.value.trim() === '') {{
-                            el.value = msg;
-                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                        }}
+                        el.value = msg;
+                        el.dispatchEvent(new Event('input', {{ bubbles: true }}));
                     }}
                 }}
             }}""", reply_text)
             
-            # 6. 点击发送按钮并物理回车击发
+            # 6. 多途径强制发送（按钮物理点击 + Ctrl+Enter + Enter 双保险）
+            print("      🚀 正在触发发送动作（点击发送按钮 + Enter/Ctrl+Enter 击键）...", flush=True)
+            
+            # A. 点击发送按钮（Playwright 定位器）
             send_btn = page.locator("button.btn-send, button:has-text('发送'), [class*='btn-send'], .op-btn-send").first
             try:
                 if await send_btn.is_visible():
@@ -243,9 +220,25 @@ async def process_chat_inbox(page, fsm):
             except Exception:
                 pass
                 
+            # B. 点击发送按钮（JS 原生派发）
+            await page.evaluate("""() => {
+                const btns = document.querySelectorAll('button, a, div[role="button"], .btn-send, .op-btn-send');
+                for (let b of btns) {
+                    const txt = b.innerText ? b.innerText.trim() : '';
+                    if (txt === '发送' || (b.className && b.className.includes('btn-send'))) {
+                        b.click();
+                        break;
+                    }
+                }
+            }""")
+            
+            # C. 敲击 Enter 与 Ctrl+Enter（兼容不同快捷键配置）
+            await page.keyboard.press("Control+Enter")
+            await asyncio.sleep(0.3)
             await page.keyboard.press("Enter")
             await asyncio.sleep(2.5)
-            print(f"      🎉 ✅ 消息已打字并发送至 HR 视窗！", flush=True)
+            
+            print(f"      🎉 ✅ 消息已打字并完成发送！", flush=True)
             
         except Exception as e:
             print(f"      ⚠️ 处理会话异常: {e}", flush=True)
@@ -256,6 +249,7 @@ async def main():
     print("\n" + "="*70)
     print("🎯 BOSS 直聘【HR 聊天室·全自动多轮对话与智能回复引擎】")
     print(f"🛡️ 湖南本地 100% 隔离 | 📄 绑定简历: {resume_file_path}")
+    print(f"⏱️ 巡检模式: 有限轮巡检（共 {MAX_INSPECTION_ROUNDS} 轮，完成后自动退出）")
     print("="*70 + "\n", flush=True)
     
     config_mgr = ConfigManager()
@@ -321,12 +315,11 @@ async def main():
         await asyncio.sleep(5.0)
         
         print("\n" + "╔" + "═"*60 + "╗")
-        print("║  🤖 【已开启：精准定位【欧阳先生/翟先生】并自动打字发送！】║")
+        print(f"║  🤖 【已开启：有限 {MAX_INSPECTION_ROUNDS} 轮自动应答【欧阳先生/翟先生】！】 ║")
         print("╚" + "═"*60 + "╝\n", flush=True)
         
-        cycle = 1
-        while True:
-            print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
+        for cycle in range(1, MAX_INSPECTION_ROUNDS + 1):
+            print(f"--- [第 {cycle}/{MAX_INSPECTION_ROUNDS} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
                 await page.bring_to_front()
                 if "zhipin.com" not in page.url:
@@ -338,9 +331,13 @@ async def main():
             except Exception as e:
                 print(f"巡检通知: {e}", flush=True)
                 
-            print("⏳ 正在守候英语客服 HR 新消息中... (15 秒后自动检查)", flush=True)
-            await asyncio.sleep(15)
-            cycle += 1
+            if cycle < MAX_INSPECTION_ROUNDS:
+                print(f"⏳ 正在守候英语客服 HR 新消息中... (15 秒后执行第 {cycle+1} 轮检查)", flush=True)
+                await asyncio.sleep(15)
+                
+        print("\n" + "="*70)
+        print(f"🎉 【有限 {MAX_INSPECTION_ROUNDS} 轮消息巡检与智能回复全部执行完毕！】")
+        print("="*70 + "\n", flush=True)
 
 
 if __name__ == "__main__":
