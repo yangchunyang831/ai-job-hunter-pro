@@ -1,7 +1,9 @@
 """
 Rock-Solid Native Live Chat Responder for English CS HRs.
-Permanently eliminates about:blank by navigating the primary tab directly without closing tabs.
-Finite 3-round inspection with guaranteed dual shortcut and button sending.
+Features:
+1. Zero navigation calls (Chrome launches directly to BOSS chat via CLI, eliminating about:blank entirely).
+2. Connects once over CDP, attaches to active BOSS tab, and keeps it permanent.
+3. Finite 3-round inspection with physical mouse clicks and dual Enter/Ctrl+Enter sending.
 """
 import sys
 import os
@@ -20,10 +22,8 @@ from src.scoring_engine import ScoringEngine
 from src.conversation_fsm import ConversationFSM
 from src.notifier import NotificationManager
 
-chat_url = "https://www.zhipin.com/web/geek/chat"
-user_data_dir = r"C:\chrome_debug_profile"
 resume_file_path = r"d:\招聘\个人简历\杨春_个人求职简历.pdf"
-MAX_INSPECTION_ROUNDS = 3  # 有限 3 轮巡检
+MAX_INSPECTION_ROUNDS = 3
 
 
 def is_english_cs_conversation(text: str) -> bool:
@@ -80,7 +80,7 @@ async def try_send_resume_attachment(page):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (真正的原生按键输入与实体发送按钮触发)"""
+    """遍历聊天列表并自动回复 HR (零跳转、原生打字与双快捷键发送)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
     # 1. 扫描所有匹配的会话项
@@ -249,49 +249,28 @@ async def main():
     notifier = NotificationManager()
     fsm = ConversationFSM(config_manager=config_mgr, notifier=notifier)
     
-    screenshots_dir = Path(__file__).resolve().parent / "tests" / "test_screenshots"
-    screenshots_dir.mkdir(parents=True, exist_ok=True)
-    
-    # 清理残留锁文件
-    for f in Path(user_data_dir).glob("Singleton*"):
-        try:
-            f.unlink(missing_ok=True)
-        except Exception:
-            pass
-    lock_file = Path(user_data_dir) / "lockfile"
-    if lock_file.exists():
-        try:
-            lock_file.unlink()
-        except Exception:
-            pass
-            
     async with async_playwright() as p:
-        print("1. 正在启动原生常驻 Chrome 浏览器并直达 BOSS 直聘消息中心...", flush=True)
-        context = await p.chromium.launch_persistent_context(
-            user_data_dir=user_data_dir,
-            headless=False,
-            channel="chrome",
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-infobars",
-                "--no-first-run",
-                "--no-default-browser-check"
-            ]
-        )
+        print("1. 正在接入桌面 Chrome 浏览器窗口...", flush=True)
+        browser = None
+        for i in range(15):
+            try:
+                browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                if browser:
+                    break
+            except Exception:
+                await asyncio.sleep(1.0)
+                
+        if not browser:
+            print("❌ 无法连接桌面 Chrome 端口 9222，请重新运行批处理启动器！", flush=True)
+            return
+
+        context = browser.contexts[0]
+        pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
+        page = pages[0] if pages else context.pages[0]
         
-        # 始终使用主默认标签页，绝不创建新页或关闭已有标签页
-        page = context.pages[0]
-        
-        # 注入防检测特性
-        try:
-            await page.add_init_script("Object.defineProperty(navigator, 'webdriver', { get: () => undefined })")
-        except Exception:
-            pass
-            
-        print(f"2. 🎉 Chrome 窗口已常驻打开！正在加载消息中心: {chat_url}", flush=True)
-        await page.goto(chat_url, wait_until="domcontentloaded")
-        print("3. 正在等待消息中心数据渲染就绪...", flush=True)
-        await asyncio.sleep(5.0)
+        print(f"2. 🎉 成功直连桌面 Chrome 窗口！当前页面: {page.url}", flush=True)
+        print("3. 正在等待消息中心数据加载就绪...", flush=True)
+        await asyncio.sleep(3.0)
         
         print("\n" + "╔" + "═"*60 + "╗")
         print(f"║  🤖 【已开启：有限 {MAX_INSPECTION_ROUNDS} 轮自动应答【欧阳先生/翟先生】！】 ║")
