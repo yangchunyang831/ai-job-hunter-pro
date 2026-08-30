@@ -1,7 +1,6 @@
 """
 Rock-Solid Native Live Chat Responder for English CS HRs.
-Launches persistent Chrome in visible headed mode directly via Playwright.
-Zero CDP reconnect drops. Permanent window persistence.
+Fixed: Replaced fragile domcontentloaded wait with instant 'commit' navigation to eliminate about:blank freeze.
 """
 import sys
 import os
@@ -231,11 +230,23 @@ async def main():
         except Exception:
             pass
             
-        print(f"2. 🎉 Chrome 窗口已常驻打开！正在加载消息中心: {chat_url}", flush=True)
-        await page.goto(chat_url, wait_until="domcontentloaded")
-        
-        print("3. 正在等待消息中心数据就绪...", flush=True)
-        await asyncio.sleep(5.0)
+        print(f"2. 🎉 Chrome 窗口已常驻打开！正在直达消息中心: {chat_url}", flush=True)
+        # 使用 wait_until='commit' 彻底杜绝停留在 about:blank
+        try:
+            await page.goto(chat_url, wait_until="commit", timeout=60000)
+        except Exception:
+            pass
+            
+        # 如果有任何多余的 about:blank 标签页，全部导航至目标页
+        for pg in context.pages:
+            if "about:blank" in pg.url:
+                try:
+                    await pg.goto(chat_url, wait_until="commit", timeout=60000)
+                except Exception:
+                    pass
+                    
+        print("3. 正在等待消息中心数据渲染就绪...", flush=True)
+        await asyncio.sleep(4.0)
         
         print("\n" + "╔" + "═"*60 + "╗")
         print("║  🤖 【已开启：精准定位【欧阳先生/翟先生】并自动打字发送！】║")
@@ -245,11 +256,15 @@ async def main():
         while True:
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                # 确保当前页面在消息中心
-                if "web/geek/chat" not in page.url:
-                    await page.goto(chat_url, wait_until="domcontentloaded")
+                # 寻找包含 zhipin 的主页面
+                active_pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
+                curr_page = active_pages[0] if active_pages else page
+                
+                if "web/geek/chat" not in curr_page.url:
+                    await curr_page.goto(chat_url, wait_until="commit", timeout=60000)
                     await asyncio.sleep(3.0)
-                await process_chat_inbox(page, fsm)
+                    
+                await process_chat_inbox(curr_page, fsm)
             except Exception as e:
                 print(f"巡检通知: {e}", flush=True)
                 
