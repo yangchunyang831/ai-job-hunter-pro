@@ -1,13 +1,17 @@
 @echo off
-chcp 65001 >nul
 title AI Job Hunter Pro - PC WeChat Direct Connection
+cd /d "%~dp0"
 
 echo ==========================================================
 echo [AI Job Hunter Pro] Testing Native PC WeChat Direct Link...
 echo ==========================================================
 echo.
 
-"d:\ÕÐÆ¸\.venv\Scripts\python.exe" "d:\ÕÐÆ¸\scripts\test_pc_wechat.py"
+if exist "%~dp0.venv\Scripts\python.exe" (
+    "%~dp0.venv\Scripts\python.exe" "%~dp0scripts\test_pc_wechat.py"
+) else (
+    python "%~dp0scripts\test_pc_wechat.py"
+)
 
 echo.
 echo ==========================================================
