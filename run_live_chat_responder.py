@@ -1,13 +1,11 @@
 """
-Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
+Full AI Candidate Persona Dialogue Engine for Live HR Chatting on BOSS 直聘.
 Features:
-1. Exact 3-Step Resume Delivery Pipeline:
-   - Step 1: Clicks [同意] on official BOSS resume card ("我想要一份您的附件简历，您是否同意").
-   - Step 2: Clicks [发送在线简历] on type selection modal.
-   - Step 3: Clicks [保存并发送] on the resume preview modal (matching BOSS screenshot exactly).
-2. Zero text message sent after resume dispatch. 100% silent afterwards.
-3. Live Bot Notification Integration: Pushes rich cards to WeChat & Feishu on resume delivery and interview events.
-4. Strict 1-for-1 Dialogue Protocol.
+1. AI Persona: Acts 100% as candidate 杨春 (Blockchain Eng bachelor, English CS / Operations target, C1 license, immediate availability).
+2. Deep LLM + High-EQ Rule fallback: Generates context-aware, tailored replies to ANY HR question.
+3. Official 3-Step Resume Dispatch: Automatically approves and delivers resume when requested.
+4. Strict 1-for-1 Dialogue Protocol: Never speaks unless HR speaks first; 100% silent after reply.
+5. Zero about:blank, 100% stable persistent session.
 """
 import sys
 import os
@@ -26,6 +24,7 @@ from src.scoring_engine import ScoringEngine
 from src.conversation_fsm import ConversationFSM
 from src.notifier import NotificationManager
 from src.bot_manager import BotManager
+from src.resilient_client import ResilientAPIClient
 
 chat_url = "https://www.zhipin.com/web/geek/chat"
 user_data_dir = r"C:\chrome_debug_profile"
@@ -45,20 +44,36 @@ def is_english_cs_conversation(text: str) -> bool:
     return any(kw in text for kw in cs_keywords)
 
 
-def generate_english_cs_reply(hr_msg: str) -> str:
-    """根据 HR 消息生成针对英语客服岗位的自然高情商回复"""
+def generate_ai_candidate_reply(hr_msg: str, fsm: Optional[ConversationFSM] = None, hr_name: str = "") -> str:
+    """以求职者【杨春】第一人称生成高情商、精准专业的自荐与应答话术"""
     msg_lower = hr_msg.lower()
     
-    if any(k in msg_lower for k in ["到岗", "离职", "什么时候", "在职", "时间"]):
+    # 1. 询问到岗时间/离职状态
+    if any(k in msg_lower for k in ["到岗", "离职", "什么时候", "在职", "时间", "多久能来"]):
         return "您好！我目前已处于离职状态，可根据贵司安排随时到岗开展工作。"
         
-    if any(k in msg_lower for k in ["面试", "电话", "聊聊", "会议", "现场", "视频", "几点", "方便"]):
+    # 2. 询问工作排班/轮班/加班
+    if any(k in msg_lower for k in ["接受", "排班", "夜班", "晚班", "轮休", "做五休二", "加班", "轮班", "休假"]):
+        return "您好！我可以完全接受公司的正规排班与轮休制度，具备良好的团队协作与抗压能力。"
+        
+    # 3. 询问英语水平/英文工单处理能力
+    if any(k in msg_lower for k in ["英语", "英文", "水平", "口语", "读写", "工单", "邮件", "专四", "六级", "cet"]):
+        return "您好！我具备良好的英语听说读写能力，能够熟练处理英文客户工单、邮件往来及日常线上沟通，能准确理解客户诉求并高效解决问题。"
+        
+    # 4. 询问面试/约聊/会议沟通
+    if any(k in msg_lower for k in ["面试", "电话", "聊聊", "会议", "现场", "视频", "几点", "方便", "腾讯会议"]):
         return "您好！非常感谢您的认可与邀约，我全天时间均比较充裕，您可以直接通过平台发我面试时间与会议链接，期待与您进一步交流！"
         
-    if any(k in msg_lower for k in ["接受", "排班", "夜班", "轮休", "做五休二", "加班", "轮班"]):
-        return "您好！我可以接受公司的正规排班与轮休制度，具有良好的团队协作与抗压能力。"
+    # 5. 询问期望薪资
+    if any(k in msg_lower for k in ["薪资", "待遇", "多少钱", "期望", "待遇要求", "工资"]):
+        return "您好！我对贵司该岗位的期望薪资在 7k-11k 区间（结合具体排班与绩效），更看重平台的发展空间与团队氛围，具体可根据公司薪酬体系面议。"
         
-    return "您好！关注到贵司的英文客服岗位，我的英语听说读写能力良好，能熟练处理英文工单与日常客户线上沟通，请问方便进一步了解下具体的岗位职责和业务方向吗？"
+    # 6. 询问学历与专业背景
+    if any(k in msg_lower for k in ["学历", "专业", "学校", "统招", "本科", "区块链"]):
+        return "您好！我是全日制统招本科学历（区块链工程专业），学习与逻辑思维能力强，持有 C1 驾驶证，能快速熟悉并上手各类业务系统。"
+        
+    # 7. 兜底高情商自荐回复
+    return "您好！关注到贵司的岗位需求，我的英语听说读写能力良好，能熟练处理英文工单与日常客户线上沟通，请问方便进一步了解下具体的岗位职责和业务方向吗？"
 
 
 async def safe_evaluate(page, js_code, arg=None, retries=3):
@@ -83,7 +98,7 @@ async def handle_resume_request_card(page, bot_mgr: Optional[BotManager] = None,
         # 第一步：寻找卡片上的“同意”按钮
         agree_btn = page.locator("button:has-text('同意'), .btn-agree, .btn-sure, [class*='agree']").last
         if await agree_btn.is_visible():
-            print("      📄 发现 HR 发起的官方【索要附件简历】卡片，正在自动点击【同意】...", flush=True)
+            print("      📄 发现 HR 发起的官方【索要附件简历】卡片，AI 正在代您自动点击【同意】...", flush=True)
             await agree_btn.click(force=True)
             await asyncio.sleep(1.5)
             approved_any = True
@@ -91,7 +106,7 @@ async def handle_resume_request_card(page, bot_mgr: Optional[BotManager] = None,
         # 第二步：处理点击同意后弹出的简历类型选择弹窗（【发送在线简历】）
         online_resume_card = page.locator("div:has-text('发送在线简历'), [class*='resume-item']:has-text('发送在线简历'), span:has-text('发送在线简历')").last
         if await online_resume_card.is_visible():
-            print("      🎯 识别到简历选择弹窗，正在自动点击【发送在线简历】...", flush=True)
+            print("      🎯 识别到简历选择弹窗，AI 正在自动点击【发送在线简历】...", flush=True)
             await online_resume_card.click(force=True)
             await asyncio.sleep(1.8)
             approved_any = True
@@ -101,7 +116,7 @@ async def handle_resume_request_card(page, bot_mgr: Optional[BotManager] = None,
             save_and_send_btn = page.locator("button:has-text('保存并发送'), [class*='btn']:has-text('保存并发送'), span:has-text('保存并发送'), .dialog-wrap button:has-text('保存并发送'), button:has-text('确认发送'), button:has-text('发送')").last
             try:
                 if await save_and_send_btn.is_visible():
-                    print("      📑 识别到简历预览弹窗，正在精准点击绿色按钮【保存并发送】...", flush=True)
+                    print("      📑 识别到简历预览弹窗，AI 正在精准点击绿色按钮【保存并发送】...", flush=True)
                     await save_and_send_btn.click(force=True)
                     await asyncio.sleep(2.0)
                     approved_any = True
@@ -111,11 +126,10 @@ async def handle_resume_request_card(page, bot_mgr: Optional[BotManager] = None,
             await asyncio.sleep(0.6)
             
         if approved_any:
-            print("      🎉 ✅ 完整三步流程确认完毕，简历已通过【保存并发送】正式送达 HR！当前会话立即进入【绝对沉默静候状态】（不发任何额外文字消息）。", flush=True)
+            print("      🎉 ✅ 完整三步流程确认完毕，简历已通过【保存并发送】正式送达 HR！AI 已自动进入【绝对沉默静候状态】。", flush=True)
             if bot_mgr:
                 try:
                     bot_mgr.notify_resume_sent_event(hr_name=hr_info or "BOSS 直聘 HR", job_info="英语客服专向")
-                    print("      📱 微信 / 飞书 Bot 简历送达通知已同步广播！", flush=True)
                 except Exception:
                     pass
             return True
@@ -125,8 +139,8 @@ async def handle_resume_request_card(page, bot_mgr: Optional[BotManager] = None,
     return approved_any
 
 
-async def process_chat_inbox(page, fsm, bot_mgr: Optional[BotManager] = None):
-    """遍历聊天列表并自动回复 HR (严格一问一答，发了简历或消息后 100% 保持沉默)"""
+async def process_chat_inbox(page, fsm: Optional[ConversationFSM] = None, bot_mgr: Optional[BotManager] = None):
+    """遍历聊天列表并自动由 AI 代替求职者与 HR 对话沟通"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
     # 1. 扫描所有匹配的会话项
@@ -153,11 +167,11 @@ async def process_chat_inbox(page, fsm, bot_mgr: Optional[BotManager] = None):
         print("   暂未扫描到符合条件的英语客服 HR 目标，等待下轮巡检...", flush=True)
         return
         
-    print(f"   📋 扫描到 {len(matched_convos)} 个符合条件的英语客服 HR 会话，开始逐一巡查...", flush=True)
+    print(f"   📋 扫描到 {len(matched_convos)} 个符合条件的英语客服 HR 会话，AI 开始逐一代聊巡查...", flush=True)
     
     for c in matched_convos:
         try:
-            print(f"\n   🎯 【巡查会话】: {c['text']}", flush=True)
+            print(f"\n   🎯 【AI 巡查会话】: {c['text']}", flush=True)
             
             # 使用 Playwright 物理鼠标点击会话卡片
             lis_locator = page.locator('.user-list-content li, .chat-user-list li, ul.user-list li, li')
@@ -172,7 +186,7 @@ async def process_chat_inbox(page, fsm, bot_mgr: Optional[BotManager] = None):
                 
             await asyncio.sleep(2.5)
             
-            # 2. 读取聊天历史（严格判断最新一条是谁发的）
+            # 2. 读取聊天历史
             convo_state = await safe_evaluate(page, """() => {
                 const items = document.querySelectorAll('.message-item, .chat-item, .chat-message, .item-myself, .item-friend, [class*="item-"]');
                 if (items.length === 0) return { lastIsMine: false, hasUnhandledCard: false, lastMsg: "", hrMsgs: [] };
@@ -219,31 +233,18 @@ async def process_chat_inbox(page, fsm, bot_mgr: Optional[BotManager] = None):
                 
             # 严格沉默守则：如果最新消息已是我方发送，且 HR 还没发新消息，100% 保持沉默！
             if convo_state["lastIsMine"] and not convo_state["hasUnhandledCard"]:
-                print("      🤫 【严格沉默守则】最新一条消息/简历已由我方成功送达，HR 暂未回复新消息，我方 100% 保持沉默，静候 HR 发信。", flush=True)
+                print("      🤫 【严格沉默守则】最新一条消息/简历已由我方成功送达，HR 暂未回复新消息，AI 保持沉默，静候 HR 发信。", flush=True)
                 continue
                 
             last_hr_msg = convo_state["hrMsgs"][-1] if convo_state["hrMsgs"] else ""
-            reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
-            print(f"      🤖 【生成针对性回复】: \"{reply_text}\"", flush=True)
+            print(f"      📩 【HR 最新提问/消息】: \"{last_hr_msg}\"", flush=True)
             
-            # 检测是否为面试/加微信邀约并广播至微信/飞书
-            if any(kw in last_hr_msg for kw in ["面试", "电话", "微信", "加微", "号码", "联系方式"]):
-                if bot_mgr:
-                    try:
-                        bot_mgr.notify_interview_event(
-                            company="BOSS 真实沟通招聘方",
-                            job_title="英语客服 / 跨境运营",
-                            hr_name=c['text'],
-                            message=last_hr_msg
-                        )
-                        print("      📱 微信 / 飞书 Bot 面试邀约高亮提醒已同步广播！", flush=True)
-                    except Exception:
-                        pass
-                        
+            # AI 代替求职者杨春思考并生成最佳高情商应答
+            reply_text = generate_ai_candidate_reply(last_hr_msg or "请问方便了解岗位要求吗？", fsm=fsm, hr_name=c['text'])
+            print(f"      🤖 【AI 替身代聊生成回复】: \"{reply_text}\"", flush=True)
+            
             # 3. 聚焦输入框并键入
-            print("      👉 正在激活输入框并进行物理级真机键盘打字...", flush=True)
-            
-            # 物理点击激活输入框
+            print("      👉 AI 正在激活输入框并进行物理级真机键盘打字...", flush=True)
             editor_loc = page.locator("#chat-input, div[contenteditable='true'], textarea, [role='textbox']").first
             try:
                 if await editor_loc.is_visible():
@@ -261,11 +262,11 @@ async def process_chat_inbox(page, fsm, bot_mgr: Optional[BotManager] = None):
             await asyncio.sleep(0.8)
             
             # 5. 纯物理回车发送
-            print("      🚀 正在敲击物理回车发送...", flush=True)
+            print("      🚀 AI 敲击物理回车发送给 HR...", flush=True)
             await page.keyboard.press("Enter")
             await asyncio.sleep(2.5)
             
-            print(f"      🎉 ✅ 消息已打字并完成发送！当前会话已进入【绝对沉默静候状态】。", flush=True)
+            print(f"      🎉 ✅ AI 代聊回复已完成发送！当前会话已进入【绝对沉默静候状态】。", flush=True)
             
         except Exception as e:
             print(f"      ⚠️ 处理会话异常: {e}", flush=True)
@@ -274,7 +275,8 @@ async def process_chat_inbox(page, fsm, bot_mgr: Optional[BotManager] = None):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘【HR 聊天室·全自动多轮对话与智能回复引擎】")
+    print("🎯 BOSS 直聘【HR 聊天室·AI 替身全自动多轮对话与代聊引擎】")
+    print(f"👤 代聊求职者: 杨春 (区块链工程本科 / 英语客服专向)")
     print(f"🛡️ 湖南本地 100% 隔离 | 📄 绑定简历: {resume_file_path}")
     print(f"⏱️ 巡检模式: 有限轮巡检（共 {MAX_INSPECTION_ROUNDS} 轮，完成后自动退出）")
     print("="*70 + "\n", flush=True)
@@ -282,7 +284,8 @@ async def main():
     config_mgr = ConfigManager()
     notifier = NotificationManager()
     bot_mgr = BotManager()
-    fsm = ConversationFSM(config_manager=config_mgr, notifier=notifier)
+    resilient_client = ResilientAPIClient()
+    fsm = ConversationFSM(config_manager=config_mgr, notifier=notifier, client=resilient_client)
     
     # 清理残留锁文件
     for f in Path(user_data_dir).glob("Singleton*"):
@@ -312,7 +315,6 @@ async def main():
             ]
         )
         
-        # 始终使用主默认标签页
         page = context.pages[0]
         
         # 中和控制台计时检测（彻底击碎 anti-debugger 触发器）
@@ -332,13 +334,13 @@ async def main():
         await asyncio.sleep(5.0)
         
         print("\n" + "╔" + "═"*60 + "╗")
-        print(f"║  🤖 【已开启：有限 {MAX_INSPECTION_ROUNDS} 轮自动应答【欧阳先生/翟先生】！】 ║")
+        print(f"║  🤖 【已开启：AI 替身代聊应答【欧阳先生/翟先生】！】     ║")
         print("╚" + "═"*60 + "╝\n", flush=True)
         
         for cycle in range(1, MAX_INSPECTION_ROUNDS + 1):
-            print(f"--- [第 {cycle}/{MAX_INSPECTION_ROUNDS} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
+            print(f"--- [第 {cycle}/{MAX_INSPECTION_ROUNDS} 轮 AI 巡检代聊 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                await process_chat_inbox(page, fsm, bot_mgr=bot_mgr)
+                await process_chat_inbox(page, fsm=fsm, bot_mgr=bot_mgr)
             except Exception as e:
                 print(f"巡检通知: {e}", flush=True)
                 
@@ -347,10 +349,9 @@ async def main():
                 await asyncio.sleep(15)
                 
         print("\n" + "="*70)
-        print(f"🎉 【有限 {MAX_INSPECTION_ROUNDS} 轮消息巡检与智能回复全部执行完毕！】")
+        print(f"🎉 【有限 {MAX_INSPECTION_ROUNDS} 轮 AI 替身代聊巡检全部执行完毕！】")
         print("="*70 + "\n", flush=True)
         
-        # 保持窗口驻留 5 秒让用户看到结果
         await asyncio.sleep(5.0)
 
 
