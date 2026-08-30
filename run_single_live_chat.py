@@ -85,7 +85,7 @@ async def main():
     
     config_mgr = ConfigManager()
     scoring_engine = ScoringEngine(config_manager=config_mgr)
-    notifier = NotificationManager(config_manager=config_mgr)
+    notifier = NotificationManager()
     fsm = ConversationFSM(config_manager=config_mgr, notifier=notifier)
     
     screenshots_dir = Path(__file__).resolve().parent / "tests" / "test_screenshots"
