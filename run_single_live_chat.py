@@ -1,5 +1,5 @@
 """
-Zero-Ban Precision Pipeline (Single Search, Automatic Hydration, 30s Timeout Progression).
+Zero-Ban Precision Pipeline (Single-Search, 45 Target Matching, 30s Timeout Progression).
 """
 import sys
 import os
@@ -61,7 +61,7 @@ async def send_auto_reply_to_hr(page, reply_text):
 
 async def main():
     print("\n" + "="*70)
-    print("🎯 BOSS 直聘【单次搜索·精准匹配英语客服·30秒无回复自动切岗】实战启动")
+    print("🎯 BOSS 直聘【单次搜索·精准匹配英语客服·30秒无回复自动切岗】启动")
     print("="*70 + "\n", flush=True)
     
     config_mgr = ConfigManager()
@@ -74,7 +74,7 @@ async def main():
     
     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
     user_data_dir = r"C:\chrome_debug_profile"
-    target_url = "https://www.zhipin.com/web/geek/jobs?query=%E8%8B%B1%E8%AF%AD%E5%AE%A2%E6%9C%8D&city=101020100"
+    target_url = "https://www.zhipin.com/web/geek/job?query=%E8%8B%B1%E8%AF%AD%E5%AE%A2%E6%9C%8D&city=101020100"
     
     async with async_playwright() as p:
         browser = None
@@ -119,8 +119,8 @@ async def main():
         await page.bring_to_front()
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
-        # 单次导航，绝不重复刷新
-        if "web/geek/jobs" not in page.url or "101020100" not in page.url:
+        # 单次精准导航
+        if "web/geek/job" not in page.url or "101020100" not in page.url:
             print(f"2. 正在执行单次精准加载: 【上海·英语客服】...", flush=True)
             try:
                 await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
@@ -131,49 +131,29 @@ async def main():
             print("2. ✅ 当前标签页已就绪！", flush=True)
             
         await page.bring_to_front()
+        await asyncio.sleep(2)
         
-        # 激活搜索栏消除骨架屏
-        print("3. 正在激活搜索栏并注水真实岗位数据...", flush=True)
-        try:
-            search_input = page.locator("input[placeholder*='搜索'], .ipt-search, .search-form input, input.input").first
-            if await search_input.is_visible():
-                await search_input.click()
-                await page.keyboard.press("Enter")
-                await asyncio.sleep(2.5)
-            else:
-                await page.mouse.click(850, 95)
-                await asyncio.sleep(2.5)
-        except Exception:
-            pass
-            
-        # 读取岗位卡片
-        print("4. 正在读取页面上的在招岗位卡片列表...", flush=True)
+        # 3. 读取页面中已渲染的全部岗位卡片
+        print("3. 正在读取页面上的在招岗位卡片列表...", flush=True)
         cards = []
         for sec in range(12):
             await asyncio.sleep(1.0)
             try:
-                card_elems = await page.query_selector_all(".job-card-wrapper, .job-card-box, li.job-card, .job-list-box li, .job-primary, [class*='job-card']")
+                card_elems = await page.query_selector_all(".job-card-wrapper, .job-card-box, li.job-card, .job-list-box li, [class*='job-card']")
                 for c in card_elems:
                     txt = (await c.inner_text()).strip()
-                    if len(txt) > 10 and any(k in txt for k in ["K", "k", "薪", "元", "面议", "客服", "上海"]):
+                    if len(txt) > 10:
                         if c not in cards:
                             cards.append(c)
                 if cards:
-                    print(f"   🎉 第 {sec+1} 秒成功捕获到 {len(cards)} 个真实岗位卡片！", flush=True)
+                    print(f"   🎉 成功捕获到 {len(cards)} 个真实岗位卡片！", flush=True)
                     break
             except Exception:
                 pass
                 
-        if not cards:
-            try:
-                cards = await page.query_selector_all(".job-card-wrapper, .job-card-box, li.job-card, .card")
-            except Exception:
-                pass
-                
-        print(f"   🎉 ✅ 最终捕获到 {len(cards)} 个在招岗位卡片！\n", flush=True)
-        
-        # 筛选英语客服测试岗位
+        # 4. 筛选英语客服测试岗位
         matched_targets = []
+        seen_companies = set()
         for idx, card in enumerate(cards, 1):
             try:
                 raw_text = (await card.inner_text()).strip()
@@ -190,7 +170,11 @@ async def main():
                 
             lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
             title = lines[0] if len(lines) > 0 else "英语客服"
-            company = lines[2] if len(lines) >= 3 else "招聘企业"
+            company = lines[4] if len(lines) >= 5 else (lines[2] if len(lines) >= 3 else "招聘企业")
+            
+            if company in seen_companies:
+                continue
+            seen_companies.add(company)
             
             matched_targets.append({
                 "card": card,
@@ -202,7 +186,7 @@ async def main():
 
         print(f"\n📊 匹配完毕！共筛选出 {len(matched_targets)} 个合规【英语客服】岗位，开始依次沟通：\n", flush=True)
         
-        # 依次沟通推进
+        # 5. 依次沟通推进
         for idx, target in enumerate(matched_targets, 1):
             print("\n" + "─"*65)
             print(f"🎯 【正在沟通目标 {idx}/{len(matched_targets)}】: 【{target['company']}】{target['title']}")
@@ -211,7 +195,7 @@ async def main():
             try:
                 await target["card"].scroll_into_view_if_needed()
                 await target["card"].click()
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(2.5)
             except Exception:
                 pass
                 
