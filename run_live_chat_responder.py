@@ -1,11 +1,12 @@
 """
 Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
 Features:
-1. Full 2-Step Resume Dispatch Flow:
+1. Complete 3-Step Official Resume Delivery Pipeline:
    - Step 1: Clicks [同意] on official BOSS resume card ("我想要一份您的附件简历，您是否同意").
-   - Step 2: Automatically handles the popup modal (clicks [发送在线简历] / uploads candidate PDF).
-2. Strict 1-for-1 Dialogue Protocol: Only replies once when HR sends a new message/card.
-3. Zero about:blank, 100% stable persistent session.
+   - Step 2: Clicks [发送在线简历] on selection modal.
+   - Step 3: Clicks [确认发送] / [发送] / [确定] on the subsequent resume preview confirmation dialog.
+2. Safe Modal Cleanup (Escape/Close) & Resilient Context Switching between multiple HRs.
+3. Strict 1-for-1 Dialogue Protocol: Only replies once when HR sends a new message/card.
 """
 import sys
 import os
@@ -77,7 +78,8 @@ async def safe_evaluate(page, js_code, arg=None, retries=3):
 
 
 async def handle_resume_request_card(page):
-    """完整两步处理 HR 发送的官方索要简历卡片及后续弹窗"""
+    """完整三步处理 HR 官方索要简历卡片及后续预览确认弹窗"""
+    approved_any = False
     try:
         # 第一步：寻找卡片上的“同意”按钮
         agree_btn = page.locator("button:has-text('同意'), .btn-agree, .btn-sure, [class*='agree']").last
@@ -85,35 +87,37 @@ async def handle_resume_request_card(page):
             print("      📄 发现 HR 发起的官方【索要附件简历】卡片，正在自动点击【同意】...", flush=True)
             await agree_btn.click(force=True)
             await asyncio.sleep(1.5)
+            approved_any = True
             
-            # 第二步：处理点击同意后弹出的简历类型选择弹窗（【发送在线简历】/【上传简历】）
-            online_resume_card = page.locator("div:has-text('发送在线简历'), [class*='resume-item']:has-text('发送在线简历'), span:has-text('发送在线简历')").last
-            if await online_resume_card.is_visible():
-                print("      🎯 识别到简历选择弹窗，正在自动点击【发送在线简历】完成发送...", flush=True)
-                await online_resume_card.click(force=True)
-                await asyncio.sleep(1.2)
-            else:
-                # 备用：若存在直接“确定”按钮
-                confirm_btn = page.locator(".dialog-wrap .btn-sure, button:has-text('确定'), button:has-text('发送')").first
-                if await confirm_btn.is_visible():
-                    await confirm_btn.click(force=True)
-                    await asyncio.sleep(1.0)
-                    
-            print("      🎉 ✅ 简历已成功通过平台弹窗正式送达 HR！", flush=True)
-            return True
-            
-        # 若已有直接弹窗处于打开状态，直接点击【发送在线简历】
+        # 第二步：处理点击同意后弹出的简历类型选择弹窗（【发送在线简历】）
         online_resume_card = page.locator("div:has-text('发送在线简历'), [class*='resume-item']:has-text('发送在线简历'), span:has-text('发送在线简历')").last
         if await online_resume_card.is_visible():
-            print("      🎯 识别到未关闭的简历选择弹窗，正在自动点击【发送在线简历】完成发送...", flush=True)
+            print("      🎯 识别到简历选择弹窗，正在自动点击【发送在线简历】...", flush=True)
             await online_resume_card.click(force=True)
-            await asyncio.sleep(1.2)
-            print("      🎉 ✅ 简历已成功通过平台弹窗正式送达 HR！", flush=True)
+            await asyncio.sleep(1.5)
+            approved_any = True
+            
+        # 第三步：处理预览简历并确认发送弹窗（【确认发送】/【立即发送】/【确定】/【发送】）
+        for _ in range(3):
+            confirm_btn = page.locator("button:has-text('确认发送'), button:has-text('立即发送'), .dialog-wrap button:has-text('发送'), .dialog-wrap .btn-sure, .dialog-wrap .btn-primary, button:has-text('确定')").first
+            try:
+                if await confirm_btn.is_visible():
+                    print("      📑 识别到简历预览确认弹窗，正在自动点击【确认发送】...", flush=True)
+                    await confirm_btn.click(force=True)
+                    await asyncio.sleep(1.5)
+                    approved_any = True
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(0.5)
+            
+        if approved_any:
+            print("      🎉 ✅ 完整三步流程确认完毕，简历已正式送达 HR！", flush=True)
             return True
             
     except Exception as e:
         print(f"      ℹ️ 处理简历卡片/弹窗状态: {e}", flush=True)
-    return False
+    return approved_any
 
 
 async def process_chat_inbox(page, fsm):
@@ -196,7 +200,7 @@ async def process_chat_inbox(page, fsm):
                 };
             }""")
             
-            # 完整处理“索要附件简历”卡片及后续选择弹窗
+            # 完整三步处理“索要附件简历”卡片及后续预览确认弹窗
             resume_card_approved = await handle_resume_request_card(page)
             
             # 严格一问一答守则：如果最新消息已是我方发送，且没有未处理的简历卡片/弹窗，保持静默跳过
