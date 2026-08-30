@@ -1,7 +1,7 @@
 """
 Bulletproof Live Multi-Turn Chat Responder for English CS HRs.
-Fixed: Replaced fragile locator.fill() with native keyboard.type() and InputEvent injection
-for Vue contenteditable chat editors on BOSS 直聘.
+Fixed: Removed invalid :has-text from document.querySelector (which threw DOMException)
+and replaced with robust JS button search and Playwright locator.
 """
 import sys
 import os
@@ -153,33 +153,53 @@ async def process_chat_inbox(page, fsm):
                 
             print(f"      🤖 【生成智能应答】: \"{reply_text}\"", flush=True)
             
-            # 填入聊天输入框 (使用兼容 contenteditable 的原生 InputEvent 与键盘模拟)
+            # 填入聊天输入框
             print("      👉 正在向聊天输入框填入回复并发送...", flush=True)
             
-            sent_ok = await page.evaluate(f"""(msg) => {{
-                const editor = document.querySelector('#chat-input, div[contenteditable="true"], textarea, .chat-input, .chat-editor, .input-area');
-                if (!editor) return false;
-                editor.focus();
-                if (editor.isContentEditable) {{
-                    editor.innerText = msg;
-                    editor.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
-                }} else {{
-                    editor.value = msg;
-                    editor.dispatchEvent(new Event('input', {{ bubbles: true }}));
+            # 1. DOM 原生设置文字并触发 InputEvent
+            await page.evaluate(f"""(msg) => {{
+                const candidates = document.querySelectorAll('#chat-input, div[contenteditable="true"], textarea, .chat-input, .chat-editor, .input-area');
+                let editor = null;
+                for (let c of candidates) {{
+                    const rect = c.getBoundingClientRect();
+                    if (rect.width > 150) {{
+                        editor = c;
+                        break;
+                    }}
                 }}
-                const sendBtn = document.querySelector('button.btn-send, button:has-text("发送"), [class*="btn-send"], .op-btn-send');
-                if (sendBtn) {{
-                    sendBtn.click();
-                    return true;
+                if (editor) {{
+                    editor.focus();
+                    if (editor.isContentEditable) {{
+                        editor.innerText = msg;
+                        editor.innerHTML = msg;
+                        editor.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
+                    }} else {{
+                        editor.value = msg;
+                        editor.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    }}
                 }}
-                return true;
             }}""", reply_text)
             
-            # 键盘 Enter 双保险
+            await asyncio.sleep(0.5)
+            
+            # 2. 点击【发送】按钮（纯原生 DOM 遍历查找 + Playwright 备用）
+            btn_clicked = await page.evaluate("""() => {
+                const btns = document.querySelectorAll('button, a, div[role="button"], .btn-send, .op-btn-send');
+                for (let b of btns) {
+                    const txt = b.innerText ? b.innerText.trim() : '';
+                    if (txt === '发送' || txt.includes('发送') || (b.className && b.className.includes('btn-send'))) {
+                        b.click();
+                        return true;
+                    }
+                }
+                return false;
+            }""")
+            
+            # 3. 敲击 Enter 键保底发送
             await page.keyboard.press("Enter")
             await asyncio.sleep(2.5)
             
-            print("      🎉 ✅ 消息已成功打字并发送至 HR 聊天视窗！", flush=True)
+            print(f"      🎉 ✅ 消息已成功打字并发送至 HR 聊天视窗！(按钮点击触发: {btn_clicked})", flush=True)
             
             try:
                 await page.screenshot(path="tests/test_screenshots/live_chat_replied.png")
