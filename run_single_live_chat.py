@@ -74,6 +74,7 @@ async def main():
     
     chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
     user_data_dir = r"C:\chrome_debug_profile"
+    # 标准岗位列表路由 (无 /jobs 的单数 /job 路由)
     target_url = "https://www.zhipin.com/web/geek/job?query=%E8%8B%B1%E8%AF%AD%E5%AE%A2%E6%9C%8D&city=101020100"
     
     async with async_playwright() as p:
@@ -119,19 +120,15 @@ async def main():
         await page.bring_to_front()
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
-        # 单次精准导航
-        if "web/geek/job" not in page.url or "101020100" not in page.url:
-            print(f"2. 正在执行单次精准加载: 【上海·英语客服】...", flush=True)
-            try:
-                await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
-            except Exception:
-                pass
-            await asyncio.sleep(3)
-        else:
-            print("2. ✅ 当前标签页已就绪！", flush=True)
+        # 严格精准单次导航到 /web/geek/job 标准列表页
+        print(f"2. 正在加载标准在招列表靶场: 【上海·英语客服】...", flush=True)
+        try:
+            await page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+        except Exception:
+            pass
+        await asyncio.sleep(4)
             
         await page.bring_to_front()
-        await asyncio.sleep(2)
         
         # 3. 读取页面中已渲染的全部岗位卡片
         print("3. 正在读取页面上的在招岗位卡片列表...", flush=True)
