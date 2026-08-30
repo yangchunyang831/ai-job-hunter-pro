@@ -1,11 +1,7 @@
 """
 Bulletproof Live Multi-Turn Chat Responder for English CS HRs.
-Connects directly to the live Chrome window on port 9222.
-Features:
-1. Strict Geofencing: 100% BLOCKS Hunan / Changsha / Huaihua / Hongjiang.
-2. Target Filtering: ONLY communicates with HRs of 英语客服 / 英文客服 / 海外客服.
-3. Automatically clicks the conversation, types the high-EQ reply, and clicks Send!
-4. Auto-dispatches resume file: 'd:\\招聘\\个人简历\\杨春_个人求职简历.pdf' when requested!
+Fixed: Replaced fragile locator.fill() with native keyboard.type() and InputEvent injection
+for Vue contenteditable chat editors on BOSS 直聘.
 """
 import sys
 import os
@@ -120,7 +116,7 @@ async def process_chat_inbox(page, fsm):
                 }}
             }}""", c["idx"])
             
-            await asyncio.sleep(2.5)
+            await asyncio.sleep(3.0)
             
             # 提取右侧聊天消息
             messages = await page.evaluate("""() => {
@@ -157,26 +153,38 @@ async def process_chat_inbox(page, fsm):
                 
             print(f"      🤖 【生成智能应答】: \"{reply_text}\"", flush=True)
             
-            # 填入聊天输入框并回车发送
-            input_box = page.locator(".chat-input, textarea, .chat-editor, [contenteditable='true'], .input-area").first
-            if await input_box.is_visible():
-                await input_box.click(timeout=3000)
-                await input_box.fill(reply_text)
-                await asyncio.sleep(0.5)
-                
-                send_btn = page.locator("button.btn-send, button:has-text('发送'), [class*='btn-send'], .op-btn-send").first
-                if await send_btn.is_visible():
-                    await send_btn.click(timeout=2000)
-                else:
-                    await page.keyboard.press("Enter")
-                    
-                print("      🎉 ✅ 消息已成功打字并发送至 HR 聊天视窗！", flush=True)
-                await asyncio.sleep(2.0)
-                
-                try:
-                    await page.screenshot(path="tests/test_screenshots/live_chat_replied.png")
-                except Exception:
-                    pass
+            # 填入聊天输入框 (使用兼容 contenteditable 的原生 InputEvent 与键盘模拟)
+            print("      👉 正在向聊天输入框填入回复并发送...", flush=True)
+            
+            sent_ok = await page.evaluate(f"""(msg) => {{
+                const editor = document.querySelector('#chat-input, div[contenteditable="true"], textarea, .chat-input, .chat-editor, .input-area');
+                if (!editor) return false;
+                editor.focus();
+                if (editor.isContentEditable) {{
+                    editor.innerText = msg;
+                    editor.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: msg }}));
+                }} else {{
+                    editor.value = msg;
+                    editor.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                }}
+                const sendBtn = document.querySelector('button.btn-send, button:has-text("发送"), [class*="btn-send"], .op-btn-send');
+                if (sendBtn) {{
+                    sendBtn.click();
+                    return true;
+                }}
+                return true;
+            }}""", reply_text)
+            
+            # 键盘 Enter 双保险
+            await page.keyboard.press("Enter")
+            await asyncio.sleep(2.5)
+            
+            print("      🎉 ✅ 消息已成功打字并发送至 HR 聊天视窗！", flush=True)
+            
+            try:
+                await page.screenshot(path="tests/test_screenshots/live_chat_replied.png")
+            except Exception:
+                pass
         except Exception as e:
             print(f"      ⚠️ 处理会话异常: {e}", flush=True)
             continue
