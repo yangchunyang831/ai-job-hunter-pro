@@ -216,7 +216,11 @@ async def main():
         if not page:
             page = context.pages[0] if context.pages else await context.new_page()
             
-        await page.bring_to_front()
+        try:
+            await page.bring_to_front()
+        except Exception:
+            pass
+            
         print(f"1. 🎉 成功直连桌面 Chrome 窗口！当前 URL: {page.url}", flush=True)
         
         # 进入聊天消息中心
@@ -238,7 +242,10 @@ async def main():
             except Exception:
                 pass
             
-        await page.bring_to_front()
+        try:
+            await page.bring_to_front()
+        except Exception:
+            pass
         
         print("\n" + "╔" + "═"*60 + "╗")
         print("║  🤖 【已开启 HR 消息常驻实时监听，有问必答，自动发简历！】║")
