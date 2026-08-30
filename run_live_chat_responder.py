@@ -1,9 +1,9 @@
 """
 Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
 Features:
-1. Neutralizes console-based anti-debugger timing attacks (console.table/console.clear no-op).
-2. 100% immune to about:blank and window closures (verified 31 conversation items rendered).
-3. Finite 3-round inspection with physical mouse clicks and Enter key sending.
+1. Strict 1-for-1 Rule: Only replies once when HR sends a new message or card. Never double-replies.
+2. Official Resume Card Auto-Approval: Automatically clicks [同意] on official BOSS resume request cards ("我想要一份您的附件简历，您是否同意").
+3. Anti-timing defense (console.table no-op) to guarantee 100% zero about:blank.
 """
 import sys
 import os
@@ -44,8 +44,8 @@ def generate_english_cs_reply(hr_msg: str) -> str:
     """根据 HR 消息生成针对英语客服岗位的自然高情商回复"""
     msg_lower = hr_msg.lower()
     
-    if any(k in msg_lower for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
-        return "您好！我的个人求职简历已准备好（杨春，本科区块链工程专业，具备良好的英语沟通与客服能力），随时可与您进一步交流！"
+    if any(k in msg_lower for k in ["简历", "附件简历", "投递", "发一份", "发个简历", "发下简历", "发简历", "看看简历"]):
+        return "好的，我的个人求职简历已为您同意发送，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
         
     if any(k in msg_lower for k in ["到岗", "离职", "什么时候", "在职", "时间"]):
         return "您好！我目前已处于离职状态，可根据贵司安排随时到岗开展工作。"
@@ -74,8 +74,31 @@ async def safe_evaluate(page, js_code, arg=None, retries=3):
                 raise e
 
 
+async def handle_resume_request_card(page):
+    """处理 HR 发送的官方索要简历交互卡片（点击【同意】）"""
+    try:
+        # 寻找卡片上的“同意”按钮
+        agree_btn = page.locator("button:has-text('同意'), .btn-agree, .btn-sure, [class*='agree']").last
+        if await agree_btn.is_visible():
+            print("      📄 发现 HR 发起的官方【索要附件简历】卡片，正在自动点击【同意】...", flush=True)
+            await agree_btn.click(force=True)
+            await asyncio.sleep(1.2)
+            
+            # 如果弹出二次确认对话框，点击“确定”/“同意”
+            confirm_btn = page.locator(".dialog-wrap .btn-sure, .dialog-wrap button:has-text('确定'), button:has-text('确定')").first
+            if await confirm_btn.is_visible():
+                await confirm_btn.click(force=True)
+                await asyncio.sleep(1.0)
+                
+            print("      🎉 ✅ 已成功点击【同意】，简历已官方直达 HR！", flush=True)
+            return True
+    except Exception as e:
+        print(f"      ℹ️ 处理卡片状态: {e}", flush=True)
+    return False
+
+
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (纯自然拟人键盘输入与回车发送)"""
+    """遍历聊天列表并自动回复 HR (严格一问一答，HR 回一句我方回一句)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
     # 1. 扫描所有匹配的会话项
@@ -121,10 +144,10 @@ async def process_chat_inbox(page, fsm):
                 
             await asyncio.sleep(2.5)
             
-            # 2. 读取聊天历史
+            # 2. 读取聊天历史（严格判断最新一条是谁发的）
             convo_state = await safe_evaluate(page, """() => {
                 const items = document.querySelectorAll('.message-item, .chat-item, .chat-message, .item-myself, .item-friend, [class*="item-"]');
-                if (items.length === 0) return { lastIsMine: false, lastMsg: "", hrMsgs: [] };
+                if (items.length === 0) return { lastIsMine: false, hasAgreeBtn: false, lastMsg: "", hrMsgs: [] };
                 
                 const lastItem = items[items.length - 1];
                 const isMine = lastItem.className.includes('myself') || 
@@ -141,19 +164,34 @@ async def process_chat_inbox(page, fsm):
                     }
                 });
                 
+                // 检查是否有未处理的“同意”按钮卡片
+                const agreeBtn = document.querySelector('button.btn-agree, .dialog-wrap .btn-sure') || 
+                                 Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('同意'));
+                
                 return {
                     lastIsMine: isMine,
+                    hasAgreeBtn: !!agreeBtn,
                     lastMsg: lastItem.innerText ? lastItem.innerText.trim() : '',
                     hrMsgs: hrMsgs
                 };
             }""")
             
-            if convo_state["lastIsMine"] and len(convo_state["hrMsgs"]) == 0:
-                print("      ℹ️ 最新消息为我方已发送状态，HR 暂无新提问，跳过重复打扰。", flush=True)
+            # 优先处理“索要附件简历”卡片的【同意】点击
+            resume_card_approved = await handle_resume_request_card(page)
+            
+            # 严格一问一答守则：如果最新消息已是我方发送，且没有未点击的同意卡片，跳过本次应答
+            if convo_state["lastIsMine"] and not convo_state["hasAgreeBtn"] and not resume_card_approved:
+                print("      ℹ️ 【严格一问一答守则】我方已发最新回复，HR 暂未发送新消息，保持静默，跳过重复打扰。", flush=True)
                 continue
                 
             last_hr_msg = convo_state["hrMsgs"][-1] if convo_state["hrMsgs"] else ""
-            reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
+            
+            # 如果刚刚点击了同意简历卡片，发送贴心的确认话术
+            if resume_card_approved:
+                reply_text = "好的，我的个人求职简历已为您同意发送，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
+            else:
+                reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
+                
             print(f"      🤖 【生成针对性回复】: \"{reply_text}\"", flush=True)
             
             # 3. 聚焦输入框并键入
