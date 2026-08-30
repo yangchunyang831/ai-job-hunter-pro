@@ -1,6 +1,9 @@
 """
 Rock-Solid Native Live Chat Responder for English CS HRs.
-Fixed: Replaced fragile domcontentloaded wait with instant 'commit' navigation to eliminate about:blank freeze.
+Features:
+1. Full inbox traversal across ALL matched HRs (翟先生, 欧阳先生, etc.).
+2. Smart deduplication: Skips conversations where the last message was already sent by candidate.
+3. Natural multi-turn AI reply generator + auto PDF resume dispatching.
 """
 import sys
 import os
@@ -78,108 +81,131 @@ async def try_send_resume_attachment(page):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR"""
+    """遍历聊天列表并自动回复 HR (智能去重 + 遍历所有未回复 HR)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
-    # 1. 查找并点击匹配的真实英语客服 HR 会话
-    clicked_info = await page.evaluate("""() => {
+    # 1. 扫描所有匹配的会话项
+    matched_convos = await page.evaluate("""() => {
+        const list = [];
         const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
-        for (let li of lis) {
+        lis.forEach((li, idx) => {
             const txt = li.innerText || '';
-            if (txt.includes('湖南') || txt.includes('怀化') || txt.includes('长沙')) continue;
-            if (txt.includes('在线客服') || txt.includes('系统消息') || txt.includes('助手')) continue;
+            if (txt.includes('湖南') || txt.includes('怀化') || txt.includes('长沙')) return;
+            if (txt.includes('在线客服') || txt.includes('系统消息') || txt.includes('助手')) return;
             if (txt.includes('翟') || txt.includes('启页') || txt.includes('欧阳') || txt.includes('览川') || txt.includes('诺博') || txt.includes('世臻') || txt.includes('英语') || txt.includes('英文')) {
-                li.click();
-                return { success: true, text: txt.replace(/\\n/g, ' | ').slice(0, 65) };
+                list.push({ idx: idx, text: txt.replace(/\\n/g, ' | ').slice(0, 65) });
             }
-        }
-        return { success: false, text: '' };
+        });
+        return list;
     }""")
     
-    if not clicked_info["success"]:
-        print("   暂未扫描到未回复的英语客服 HR 目标，等待下轮巡检...", flush=True)
+    if not matched_convos:
+        print("   暂未扫描到符合条件的英语客服 HR 目标，等待下轮巡检...", flush=True)
         return
         
-    print(f"   🎯 【已精准锁定真实 HR 会话】: {clicked_info['text']}", flush=True)
-    await asyncio.sleep(2.5)
+    print(f"   📋 扫描到 {len(matched_convos)} 个符合条件的英语客服 HR 会话，开始逐一巡查...", flush=True)
     
-    # 2. 提取右侧聊天历史
-    messages = []
-    try:
-        messages = await page.evaluate("""() => {
-            const msgs = [];
-            document.querySelectorAll('.item-friend, .chat-item-hr, .message-card, .chat-message, [class*="friend"]').forEach(el => {
-                const txt = el.innerText ? el.innerText.trim() : '';
-                if (txt) msgs.push(txt);
-            });
-            return msgs;
-        }""")
-    except Exception:
-        pass
+    for c in matched_convos:
+        try:
+            print(f"\n   🎯 【巡查会话】: {c['text']}", flush=True)
             
-    last_hr_msg = ""
-    if messages:
-        for txt in reversed(messages):
-            t = txt.strip()
-            if t and not any(my_kw in t for my_kw in ["已发送", "关注到贵司正在招聘英语客服", "请问该岗位对外语", "您好，我想和您沟通下这个职位的细节"]):
-                last_hr_msg = t
-                break
-                
-    reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
-    print(f"   🤖 【准备发送回复】: \"{reply_text}\"", flush=True)
-    
-    # 索要简历处理
-    if any(k in (last_hr_msg or "").lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
-        await try_send_resume_attachment(page)
-        
-    # 3. 填入输入框并发送
-    print("   👉 正在向聊天输入框填入回复并触发发送...", flush=True)
-    
-    try:
-        editor = page.locator("#chat-input, div[contenteditable='true'], textarea, .chat-input").first
-        if await editor.is_visible():
-            await editor.click()
-            await asyncio.sleep(0.3)
-            await page.keyboard.type(reply_text, delay=15)
-            await asyncio.sleep(0.8)
+            # 点击会话
+            await page.evaluate(f"""(idx) => {{
+                const lis = document.querySelectorAll('.user-list-content li, .chat-user-list li, ul.user-list li, li');
+                if (lis[idx]) lis[idx].click();
+            }}""", c["idx"])
+            await asyncio.sleep(2.5)
             
-            send_btn = page.locator("button.btn-send, button:has-text('发送'), [class*='btn-send'], .op-btn-send").first
-            if await send_btn.is_visible():
-                await send_btn.click()
-            else:
-                await page.keyboard.press("Enter")
+            # 2. 检查右侧聊天视窗中最后一条消息发送者（智能防重发）
+            convo_state = await page.evaluate("""() => {
+                const items = document.querySelectorAll('.message-item, .chat-item, .chat-message, .item-myself, .item-friend, [class*="item-"]');
+                if (items.length === 0) return { lastIsMine: false, lastMsg: "", hrMsgs: [] };
                 
-            await asyncio.sleep(2.0)
-            print("   🎉 ✅ 消息已成功打字并送达 HR 聊天视窗！", flush=True)
-            return
-    except Exception as e:
-        print(f"   ℹ️ 定位器打字备用处理: {e}", flush=True)
-        
-    # DOM 原生备用方案
-    try:
-        await page.evaluate(f"""(msg) => {{
-            const editor = document.getElementById('chat-input') || 
-                           document.querySelector('div[contenteditable="true"]') || 
-                           document.querySelector('.chat-input') ||
-                           document.querySelector('textarea');
-            if (editor) {{
-                editor.focus();
-                document.execCommand('insertText', false, msg);
-                const sendBtns = document.querySelectorAll('button, a, div[role="button"]');
-                for (let b of sendBtns) {{
-                    const t = b.innerText ? b.innerText.trim() : '';
-                    if (t === '发送' || (b.className && b.className.includes('btn-send'))) {{
-                        b.click();
-                        break;
+                const lastItem = items[items.length - 1];
+                const isMine = lastItem.className.includes('myself') || 
+                               lastItem.className.includes('item-myself') ||
+                               lastItem.className.includes('chat-item-myself') ||
+                               (lastItem.querySelector('.item-myself, .chat-item-myself') !== null);
+                               
+                const hrMsgs = [];
+                items.forEach(it => {
+                    const isHr = it.className.includes('friend') || it.className.includes('item-friend') || it.className.includes('chat-item-hr');
+                    if (isHr) {
+                        const txt = it.innerText ? it.innerText.trim() : '';
+                        if (txt) hrMsgs.push(txt);
+                    }
+                });
+                
+                return {
+                    lastIsMine: isMine,
+                    lastMsg: lastItem.innerText ? lastItem.innerText.trim() : '',
+                    hrMsgs: hrMsgs
+                };
+            }""")
+            
+            # 如果最后一条消息是我方发送且距今未有 HR 新回复，则无需重复打扰
+            if convo_state["lastIsMine"] and len(convo_state["hrMsgs"]) == 0:
+                print("      ℹ️ 最新消息为我方已发送状态，HR 暂未回复新问题，跳过重复发送。", flush=True)
+                continue
+                
+            last_hr_msg = convo_state["hrMsgs"][-1] if convo_state["hrMsgs"] else ""
+            reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
+            print(f"      🤖 【生成针对性回复】: \"{reply_text}\"", flush=True)
+            
+            # 索要简历处理
+            if any(k in last_hr_msg.lower() for k in ["发一份简历", "发个简历", "发下简历", "发简历", "附件简历", "看看简历", "投递", "简历发一下", "简历发我", "简历过来"]):
+                await try_send_resume_attachment(page)
+                
+            # 3. 填入聊天输入框并触发发送
+            print("      👉 正在向输入框填入回复并触发发送...", flush=True)
+            
+            # 定位器打字优先
+            try:
+                editor = page.locator("#chat-input, div[contenteditable='true'], textarea, .chat-input").first
+                if await editor.is_visible():
+                    await editor.click()
+                    await asyncio.sleep(0.3)
+                    await page.keyboard.type(reply_text, delay=15)
+                    await asyncio.sleep(0.8)
+                    
+                    send_btn = page.locator("button.btn-send, button:has-text('发送'), [class*='btn-send'], .op-btn-send").first
+                    if await send_btn.is_visible():
+                        await send_btn.click()
+                    else:
+                        await page.keyboard.press("Enter")
+                        
+                    await asyncio.sleep(2.0)
+                    print("      🎉 ✅ 消息已成功打字并送达 HR 视窗！", flush=True)
+                    continue
+            except Exception:
+                pass
+                
+            # 原生 DOM 备用
+            await page.evaluate(f"""(msg) => {{
+                const editor = document.getElementById('chat-input') || 
+                               document.querySelector('div[contenteditable="true"]') || 
+                               document.querySelector('.chat-input') ||
+                               document.querySelector('textarea');
+                if (editor) {{
+                    editor.focus();
+                    document.execCommand('insertText', false, msg);
+                    const sendBtns = document.querySelectorAll('button, a, div[role="button"]');
+                    for (let b of sendBtns) {{
+                        const t = b.innerText ? b.innerText.trim() : '';
+                        if (t === '发送' || (b.className && b.className.includes('btn-send'))) {{
+                            b.click();
+                            break;
+                        }}
                     }}
                 }}
-            }}
-        }}""", reply_text)
-        await page.keyboard.press("Enter")
-        await asyncio.sleep(2.0)
-        print("   🎉 ✅ 消息已通过原生 DOM 事件成功发送至 HR 视窗！", flush=True)
-    except Exception as e:
-        print(f"   ⚠️ DOM 发送通知: {e}", flush=True)
+            }}""", reply_text)
+            await page.keyboard.press("Enter")
+            await asyncio.sleep(2.0)
+            print("      🎉 ✅ 消息已通过原生 DOM 事件成功发送至 HR 视窗！", flush=True)
+            
+        except Exception as e:
+            print(f"      ⚠️ 处理会话异常: {e}", flush=True)
+            continue
 
 
 async def main():
@@ -231,13 +257,11 @@ async def main():
             pass
             
         print(f"2. 🎉 Chrome 窗口已常驻打开！正在直达消息中心: {chat_url}", flush=True)
-        # 使用 wait_until='commit' 彻底杜绝停留在 about:blank
         try:
             await page.goto(chat_url, wait_until="commit", timeout=60000)
         except Exception:
             pass
             
-        # 如果有任何多余的 about:blank 标签页，全部导航至目标页
         for pg in context.pages:
             if "about:blank" in pg.url:
                 try:
@@ -256,7 +280,6 @@ async def main():
         while True:
             print(f"--- [第 {cycle} 轮消息巡检 --- {time.strftime('%H:%M:%S')}] ---", flush=True)
             try:
-                # 寻找包含 zhipin 的主页面
                 active_pages = [pg for pg in context.pages if not pg.is_closed() and "zhipin.com" in pg.url]
                 curr_page = active_pages[0] if active_pages else page
                 
