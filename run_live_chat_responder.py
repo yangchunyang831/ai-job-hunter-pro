@@ -1,12 +1,12 @@
 """
 Rock-Solid 100% Stealth Native Persistent Context Live Chat Responder for English CS HRs.
 Features:
-1. Complete 3-Step Official Resume Delivery Pipeline:
+1. Strict Post-Dispatch Silence Rule: After sending a resume or message, remains 100% silent in all subsequent rounds until HR sends a new message.
+2. Complete 3-Step Official Resume Delivery Pipeline:
    - Step 1: Clicks [同意] on official BOSS resume card ("我想要一份您的附件简历，您是否同意").
    - Step 2: Clicks [发送在线简历] on selection modal.
-   - Step 3: Clicks [确认发送] / [发送] / [确定] on the subsequent resume preview confirmation dialog.
-2. Safe Modal Cleanup (Escape/Close) & Resilient Context Switching between multiple HRs.
-3. Strict 1-for-1 Dialogue Protocol: Only replies once when HR sends a new message/card.
+   - Step 3: Clicks [确认发送] / [发送] / [确定] on resume preview confirmation dialog.
+3. Safe Modal Cleanup & Zero about:blank.
 """
 import sys
 import os
@@ -121,7 +121,7 @@ async def handle_resume_request_card(page):
 
 
 async def process_chat_inbox(page, fsm):
-    """遍历聊天列表并自动回复 HR (严格一问一答，HR 回一句我方回一句)"""
+    """遍历聊天列表并自动回复 HR (严格一问一答，发了简历/消息后 100% 保持沉默等待 HR)"""
     print("\n🔍 正在扫描聊天列表中的新消息...", flush=True)
     
     # 1. 扫描所有匹配的会话项
@@ -170,7 +170,7 @@ async def process_chat_inbox(page, fsm):
             # 2. 读取聊天历史（严格判断最新一条是谁发的）
             convo_state = await safe_evaluate(page, """() => {
                 const items = document.querySelectorAll('.message-item, .chat-item, .chat-message, .item-myself, .item-friend, [class*="item-"]');
-                if (items.length === 0) return { lastIsMine: false, hasAgreeBtn: false, hasDialog: false, lastMsg: "", hrMsgs: [] };
+                if (items.length === 0) return { lastIsMine: false, hasUnhandledCard: false, lastMsg: "", hrMsgs: [] };
                 
                 const lastItem = items[items.length - 1];
                 const isMine = lastItem.className.includes('myself') || 
@@ -187,37 +187,35 @@ async def process_chat_inbox(page, fsm):
                     }
                 });
                 
+                // 检查卡片是否未处理
                 const agreeBtn = document.querySelector('button.btn-agree, .dialog-wrap .btn-sure') || 
                                  Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('同意'));
-                const dialogCard = document.querySelector('.dialog-wrap, [class*="resume-item"], [class*="dialog"]');
                 
                 return {
                     lastIsMine: isMine,
-                    hasAgreeBtn: !!agreeBtn,
-                    hasDialog: !!dialogCard,
+                    hasUnhandledCard: !!agreeBtn,
                     lastMsg: lastItem.innerText ? lastItem.innerText.trim() : '',
                     hrMsgs: hrMsgs
                 };
             }""")
             
+            # 严格沉默守则：如果最新消息已是我方发送（包括刚刚发了简历/发了消息），且 HR 还没发新消息，100% 保持沉默！
+            if convo_state["lastIsMine"] and not convo_state["hasUnhandledCard"]:
+                print("      🤫 【严格沉默守则】最新一条消息/简历已由我方成功送达，HR 暂未回复新消息，我方 100% 保持沉默，静候 HR 发信。", flush=True)
+                continue
+                
             # 完整三步处理“索要附件简历”卡片及后续预览确认弹窗
             resume_card_approved = await handle_resume_request_card(page)
             
-            # 严格一问一答守则：如果最新消息已是我方发送，且没有未处理的简历卡片/弹窗，保持静默跳过
-            if convo_state["lastIsMine"] and not convo_state["hasAgreeBtn"] and not convo_state["hasDialog"] and not resume_card_approved:
-                print("      ℹ️ 【严格一问一答守则】我方已发最新回复，HR 暂未发送新消息，保持静默，跳过重复打扰。", flush=True)
-                continue
-                
-            last_hr_msg = convo_state["hrMsgs"][-1] if convo_state["hrMsgs"] else ""
-            
-            # 若刚完成简历交付，发送高情商确认话术
+            # 如果刚刚完成了简历交付，发送一句极简礼貌确认，随后进入绝对沉默状态
             if resume_card_approved:
                 reply_text = "好的，我的个人求职简历已为您同意发送，请您查收！如果有需要进一步了解的项目经历或细节，随时沟通。"
+                print(f"      🤖 【生成简历交付确认】: \"{reply_text}\"", flush=True)
             else:
+                last_hr_msg = convo_state["hrMsgs"][-1] if convo_state["hrMsgs"] else ""
                 reply_text = generate_english_cs_reply(last_hr_msg or "请问方便了解岗位要求吗？")
+                print(f"      🤖 【生成针对性回复】: \"{reply_text}\"", flush=True)
                 
-            print(f"      🤖 【生成针对性回复】: \"{reply_text}\"", flush=True)
-            
             # 3. 聚焦输入框并键入
             print("      👉 正在激活输入框并进行物理级真机键盘打字...", flush=True)
             
@@ -243,7 +241,7 @@ async def process_chat_inbox(page, fsm):
             await page.keyboard.press("Enter")
             await asyncio.sleep(2.5)
             
-            print(f"      🎉 ✅ 消息已打字并完成发送！", flush=True)
+            print(f"      🎉 ✅ 消息已打字并完成发送！当前会话已进入【绝对沉默静候状态】。", flush=True)
             
         except Exception as e:
             print(f"      ⚠️ 处理会话异常: {e}", flush=True)
