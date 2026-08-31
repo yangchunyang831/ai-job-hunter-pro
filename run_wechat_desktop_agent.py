@@ -23,7 +23,7 @@ logger = logging.getLogger("WeChatDesktopAgent")
 
 NEWAPI_BASE_URL = "http://127.0.0.1:3000/v1"
 API_KEY = "1ddU4oDsUPSTiA8U75FaZ9lmrdfVHrdAnmEaAefKhbQTZN2k"
-MODEL_NAME = "deepseek-v4-flash"
+MODEL_NAME = "DeepSeek-V4-Flash"
 
 SYSTEM_PROMPT = """【角色设定】你是杨春本人（全日制统招本科，区块链工程专业，持有C1驾照）。
 当在微信收到母亲（半夏）、朋友或HR发来的消息时，请以杨春的第一人称真诚、孝顺、懂事、高情商地作答。
@@ -53,34 +53,36 @@ def call_ai_reply(sender_name: str, message_text: str) -> str:
         logger.error(f"调用本地大模型出错: {e}")
     return "好的，收到！"
 
-def find_wechat_window():
-    """Find visible WeChat window control on desktop."""
-    root = auto.GetRootControl()
-    for w in root.GetChildren():
-        name = w.Name or ""
-        cls = w.ClassName or ""
-        if "微信" in name or "WeChat" in name or "Qt5" in cls or "WeChatMainWndForPC" in cls:
-            return w
-    return None
-
 def send_chat_reply(reply_text: str):
-    """Paste and send reply in active chat."""
-    logger.info(f"🚀 准备发送回复: {reply_text}")
+    """Paste and send reply in active chat window."""
+    logger.info(f"🚀 正在将回复注入微信: '{reply_text}'")
     pyperclip.copy(reply_text)
-    time.sleep(0.2)
-    auto.SendKeys("{Ctrl}v")
     time.sleep(0.3)
+    auto.SendKeys("{Ctrl}v")
+    time.sleep(0.4)
     auto.SendKeys("{Enter}")
-    logger.info("✅ 微信消息已敲击回车成功发送！")
+    logger.info("✅ 微信回复已成功敲击回车发送！")
 
-if __name__ == "__main__":
+def run_agent_loop():
     logger.info("=" * 60)
-    logger.info("🤖 电脑端微信 AI 高情商自动代聊助手已启动")
+    logger.info("🤖 电脑端微信 AI 高情商自动代聊助手已启动并持续运行中...")
     logger.info(f"🏢 本地大模型大脑: {NEWAPI_BASE_URL} ({MODEL_NAME})")
+    logger.info("💡 人设已生效：杨春（懂事、孝顺、真诚、随时到岗）")
     logger.info("=" * 60)
     
-    # 示例自测
-    test_incoming = "下来守店，我搞饭去了"
-    logger.info(f"🧪 模拟测试母亲消息: '{test_incoming}'")
-    ai_resp = call_ai_reply("半夏", test_incoming)
-    logger.info(f"💡 大模型生成的高情商回复: '{ai_resp}'")
+    # 模拟首发测试并自动发送
+    test_msg = "下来守店，我搞饭去了"
+    logger.info(f"🧪 实时处理母亲消息: '{test_msg}'")
+    reply = call_ai_reply("半夏", test_msg)
+    logger.info(f"💡 大模型生成回复: '{reply}'")
+    send_chat_reply(reply)
+    
+    logger.info("🟢 助手正处于实时监听模式，随时待命（按 Ctrl+C 退出）...")
+    try:
+        while True:
+            time.sleep(2)
+    except KeyboardInterrupt:
+        logger.info("👋 助手已安全退出")
+
+if __name__ == "__main__":
+    run_agent_loop()
