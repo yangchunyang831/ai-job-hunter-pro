@@ -100,7 +100,12 @@ def focus_wechat(hwnd=None):
         return True
 
 def switch_to_contact(contact_name: str) -> bool:
-    """精准切换会话：搜索联系人并点击第一条匹配结果。"""
+    """
+    精准切换会话（严格遵守 docs/wechat_gui_automation_rules.md 规范）：
+    1. 模拟鼠标点击搜索框（left + 15%, top + 35px）；
+    2. 清空并填入搜索词；
+    3. 避开前 5 项【搜索网络结果】，精准点击【功能】/【联系人】目标项（left + 15%, top + 280px）！
+    """
     hwnd = find_wechat_hwnd()
     if not hwnd or not focus_wechat(hwnd):
         return False
@@ -111,7 +116,7 @@ def switch_to_contact(contact_name: str) -> bool:
     
     logger.info(f"🔎 正在精准搜索并切换会话: 【{contact_name}】...")
     
-    # 1. 模拟鼠标点击搜索框（微信左上方区域：left + 15% 宽度, top + 35px）
+    # 1. 模拟鼠标点击搜索框
     search_x = int(left + width * 0.15)
     search_y = int(top + 35)
     pyautogui.click(search_x, search_y)
@@ -127,16 +132,11 @@ def switch_to_contact(contact_name: str) -> bool:
     pyautogui.hotkey("ctrl", "v")
     time.sleep(0.6)
     
-    # 3. 按下向下方向键选中第一个搜索结果并回车
-    pyautogui.press("down")
-    time.sleep(0.2)
-    pyautogui.press("enter")
-    time.sleep(0.3)
-    
-    # 4. 双重保障：鼠标点击搜索结果第一项区域（top + 110px）
-    result_x = int(left + width * 0.15)
-    result_y = int(top + 110)
-    pyautogui.click(result_x, result_y)
+    # 3. 核心准则：绝对避开前5项网络搜索结果，精准点击【功能】/【联系人】项（Y偏移约为 top + 280px）
+    target_item_x = int(left + width * 0.15)
+    target_item_y = int(top + 280)
+    logger.info(f"🖱️ 避开网络搜词，精准点击【功能/联系人】项坐标 ({target_item_x}, {target_item_y}) ...")
+    pyautogui.click(target_item_x, target_item_y)
     time.sleep(0.5)
     
     logger.info(f"✅ 会话已成功切换至 【{contact_name}】！")
