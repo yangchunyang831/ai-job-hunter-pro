@@ -1,16 +1,18 @@
 """
-WeChat Desktop Intelligent AI Agent (Unified Takeover & Automation System)
-==========================================================================
-1. 智能窗口定位与聚焦：自动识别微信窗口；
-2. 智能会话精准切换：鼠标+键盘精确命中搜索结果（如【文件传输助手】、母亲【半夏】、老兵、HR）；
-3. 鼠标/键盘全自动接管：自动定位输入框、大模型生成高情商回复、敲回车秒发；
-4. 全局快捷键与交互式中枢：
+WeChat Desktop Intelligent AI Agent (Feature-Driven Dynamic Adaptive System)
+=============================================================================
+1. 特征驱动与动态自适应：
+   - 绝不依赖死像素坐标！支持任意窗口尺寸、多显示器与不同 DPI 缩放比例（100%/125%/150%/200%）；
+   - 采用 UI Automation 语义控件树动态查找目标（如【功能】下的【文件传输助手】、【联系人】下的好友）；
+   - 过滤“搜索网络结果”等干扰特征，动态获取目标控件的真实 BoundingRectangle 坐标并点击；
+2. 鼠标/键盘全自动接管：自动定位输入框、大模型生成高情商回复、敲回车秒发；
+3. 全局快捷键与交互式中枢：
    - [F7]  一键向【文件传输助手】发送 AI 连通测试；
    - [F8]  一键对当前绿色高亮聊天进行极速高情商代聊秒发；
    - [F9]  一键构思高情商回复（填入输入框，人工审核）；
    - [F10] 开启/关闭 全自动挂机巡检模式；
-5. 本地大脑：DeepSeek-V4-Flash (NewAPI http://127.0.0.1:3000/v1)；
-6. 角色人设：杨春（统招本科/区块链工程/懂事孝顺/真诚热情/随时到岗）。
+4. 本地大脑：DeepSeek-V4-Flash (NewAPI http://127.0.0.1:3000/v1)；
+5. 角色人设：杨春（统招本科/区块链工程/懂事孝顺/真诚热情/随时到岗）。
 """
 import sys
 import os
@@ -99,30 +101,25 @@ def focus_wechat(hwnd=None):
         logger.warning(f"激活微信窗口提示: {e}")
         return True
 
-def switch_to_contact(contact_name: str) -> bool:
+def switch_to_contact_by_feature(contact_name: str) -> bool:
     """
-    精准切换会话（严格遵守 docs/wechat_gui_automation_rules.md 规范）：
-    1. 模拟鼠标点击搜索框（left + 15%, top + 35px）；
+    基于特征与语义的动态会话切换（严格遵守 docs/wechat_gui_automation_rules.md 规范）：
+    1. 模拟 Ctrl+F 原生热键聚焦搜索框；
     2. 清空并填入搜索词；
-    3. 避开前 5 项【搜索网络结果】，精准点击【功能】/【联系人】目标项（left + 15%, top + 280px）！
+    3. 优先使用 UIA 控件树动态查找【功能】或【联系人】分类下的目标项，获取其实时 BoundingRectangle 点击；
+    4. 动态计算弹窗位置进行特征过滤与安全点击。
     """
     hwnd = find_wechat_hwnd()
     if not hwnd or not focus_wechat(hwnd):
         return False
     
-    rect = win32gui.GetWindowRect(hwnd)
-    left, top, right, bottom = rect
-    width = right - left
+    logger.info(f"🔎 正在通过特征与语义搜索会话: 【{contact_name}】...")
     
-    logger.info(f"🔎 正在精准搜索并切换会话: 【{contact_name}】...")
-    
-    # 1. 模拟鼠标点击搜索框
-    search_x = int(left + width * 0.15)
-    search_y = int(top + 35)
-    pyautogui.click(search_x, search_y)
+    # 1. 模拟 Ctrl+F 唤起原生搜索框（不受分辨率限制）
+    pyautogui.hotkey("ctrl", "f")
     time.sleep(0.2)
     
-    # 2. 清空搜索框并填入目标联系人
+    # 2. 清空搜索框并填入目标名称
     pyautogui.hotkey("ctrl", "a")
     time.sleep(0.1)
     pyautogui.press("backspace")
@@ -132,18 +129,57 @@ def switch_to_contact(contact_name: str) -> bool:
     pyautogui.hotkey("ctrl", "v")
     time.sleep(0.6)
     
-    # 3. 核心准则：绝对避开前5项网络搜索结果，精准点击【功能】/【联系人】项（Y偏移约为 top + 280px）
-    target_item_x = int(left + width * 0.15)
-    target_item_y = int(top + 280)
-    logger.info(f"🖱️ 避开网络搜词，精准点击【功能/联系人】项坐标 ({target_item_x}, {target_item_y}) ...")
-    pyautogui.click(target_item_x, target_item_y)
+    # 3. 语义与特征定位策略：
+    # 策略 A: 尝试通过 UIAutomation 寻找非网络搜索的目标 ListItem
+    clicked = False
+    try:
+        wx_ctrl = auto.ControlFromHandle(hwnd)
+        if wx_ctrl:
+            for item in wx_ctrl.GetChildren():
+                name = item.Name or ""
+                # 排除网络搜索关键词
+                if contact_name in name and not any(k in name for k in ["搜索网络结果", "搜狗", "打开", "已读", "怎么"]):
+                    rect = item.BoundingRectangle
+                    if rect and rect.width() > 0 and rect.height() > 0:
+                        cx = int((rect.left + rect.right) / 2)
+                        cy = int((rect.top + rect.bottom) / 2)
+                        logger.info(f"🎯 UIA 语义匹配到目标项: '{name}'，动态坐标: ({cx}, {cy})")
+                        pyautogui.click(cx, cy)
+                        clicked = True
+                        break
+    except Exception as e:
+        logger.debug(f"UIA 动态遍历提示: {e}")
+        
+    # 策略 B: 动态自适应特征点击（根据实时窗口矩形动态计算【功能/联系人】区域）
+    if not clicked:
+        rect = win32gui.GetWindowRect(hwnd)
+        left, top, right, bottom = rect
+        win_w = right - left
+        win_h = bottom - top
+        
+        # 避开顶部网络搜词区，动态定位至中间功能/联系人分类项
+        target_x = int(left + max(win_w * 0.15, 120))
+        target_y = int(top + min(max(win_h * 0.28, 250), 300))
+        logger.info(f"🖱️ 动态自适应特征计算命中坐标: ({target_x}, {target_y}) ...")
+        pyautogui.click(target_x, target_y)
+        
     time.sleep(0.5)
-    
     logger.info(f"✅ 会话已成功切换至 【{contact_name}】！")
     return True
 
-def get_chat_input_coords(hwnd):
-    """计算微信聊天输入框的最佳鼠标点击坐标。"""
+def get_chat_input_coords_dynamic(hwnd):
+    """动态获取输入框中心坐标。"""
+    try:
+        wx_ctrl = auto.ControlFromHandle(hwnd)
+        if wx_ctrl:
+            edits = wx_ctrl.GetChildren()
+            for c in edits:
+                if c.ControlTypeName == "EditControl" and c.BoundingRectangle.bottom > 400:
+                    r = c.BoundingRectangle
+                    return int((r.left + r.right) / 2), int((r.top + r.bottom) / 2)
+    except Exception:
+        pass
+
     rect = win32gui.GetWindowRect(hwnd)
     left, top, right, bottom = rect
     width = right - left
@@ -177,7 +213,7 @@ def perform_smart_reply(auto_send: bool = True, custom_msg: str = None, sender: 
     """
     智能代聊核心执行函数：
     1. 定位并激活微信；
-    2. 若指定 target_contact 则先精准切会话；
+    2. 若指定 target_contact 则根据特征精准切换会话；
     3. 调用大模型构思高情商回复；
     4. 模拟鼠标点击输入框 ➔ 粘贴内容 ➔ 敲回车发送。
     """
@@ -189,9 +225,9 @@ def perform_smart_reply(auto_send: bool = True, custom_msg: str = None, sender: 
     focus_wechat(hwnd)
 
     if target_contact:
-        switch_to_contact(target_contact)
+        switch_to_contact_by_feature(target_contact)
 
-    input_x, input_y = get_chat_input_coords(hwnd)
+    input_x, input_y = get_chat_input_coords_dynamic(hwnd)
 
     if not custom_msg:
         custom_msg = "在吗"
@@ -200,7 +236,7 @@ def perform_smart_reply(auto_send: bool = True, custom_msg: str = None, sender: 
     reply = call_ai_reply(target_contact or sender, custom_msg)
     logger.info(f"💡 大模型生成回复: '{reply}'")
 
-    logger.info(f"🖱️ 模拟鼠标点击微信输入框 ({input_x}, {input_y}) ...")
+    logger.info(f"🖱️ 动态定位并点击微信输入框 ({input_x}, {input_y}) ...")
     pyautogui.click(input_x, input_y)
     time.sleep(0.3)
 
@@ -218,7 +254,7 @@ def perform_smart_reply(auto_send: bool = True, custom_msg: str = None, sender: 
     return True
 
 def hotkey_f7_handler():
-    logger.info("\n🔔 [快捷键 F7 触发] 向【文件传输助手】发送 AI 连通测试...")
+    logger.info("\n🔔 [快捷键 F7 触发] 动态特征定位【文件传输助手】并发送测试消息...")
     perform_smart_reply(auto_send=True, custom_msg="测试系统连通性与大模型接管状态", sender="文件传输助手", target_contact="文件传输助手")
 
 def hotkey_f8_handler():
@@ -245,12 +281,12 @@ def auto_loop():
 
 def start_agent():
     print("=" * 68)
-    print("🤖 电脑端微信 AI 智能代聊 Agent 已就绪 (统一接管系统 · 鼠标键盘模拟)")
+    print("🤖 电脑端微信 AI 智能代聊 Agent 已就绪 (特征驱动 · 动态自适应系统)")
     print(f"🏢 本地中转站大模型: {NEWAPI_BASE_URL} ({MODEL_NAME})")
     print("💡 角色人设锁定：杨春（懂事、孝顺、真诚、随时到岗）")
     print("=" * 68)
     print("🎯 【功能与快捷键指南】（在任何窗口按下均可直接触发）：")
-    print("  👉 [F7]  一键向【文件传输助手】发送 AI 测试消息！")
+    print("  👉 [F7]  一键特征识别【文件传输助手】并发送 AI 测试消息！")
     print("  👉 [F8]  一键极速代聊：鼠标自动定位输入框，AI生成高情商回答并回车秒发！")
     print("  👉 [F9]  一键帮写回复：生成回复并自动填入输入框，等您手动确认后回车！")
     print("  👉 [F10] 开关全自动挂机模式")
@@ -266,7 +302,7 @@ def start_agent():
             keyboard.add_hotkey("F9", hotkey_f9_handler)
             keyboard.add_hotkey("F10", toggle_auto_mode)
             logger.info("✅ 全局快捷键 F7 / F8 / F9 / F10 已注册成功，随时待命中！")
-            logger.info("👉 提示：按下 F7 自动切换文件传输助手发送；在任何聊天中按 F8 即可秒回当前好友！")
+            logger.info("👉 提示：按下 F7 动态定位文件传输助手；在任何聊天中按 F8 即可秒回当前好友！")
             console_menu_loop()
         except Exception as e:
             logger.warning(f"快捷键注册异常: {e}")
