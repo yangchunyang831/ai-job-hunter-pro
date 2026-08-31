@@ -1,34 +1,30 @@
 @echo off
 chcp 65001 >nul
-set PYTHONIOENCODING=utf-8
-set PYTHONUTF8=1
-title WeChat AI Auto-Responder Hub (Akasha + AstrBot + NewAPI)
+title WeChat AI Auto-Reply Unified System
 cd /d "%~dp0"
 
 echo ==========================================================
-echo [1/3] 启动本地大模型中转站 NewAPI (Port 3000)...
+echo [1/4] 启动本地大模型中转站 (Port 3000)...
 echo ==========================================================
-start /min "" "E:\NewAPI\new-api.exe" --port 3000
+start /min "NewAPI" "E:\NewAPI\new-api.exe" --port 3000
 
 echo.
 echo ==========================================================
-echo [2/3] 启动 AstrBot 智能中枢 (Port 6185 & OneBot 11229)...
+echo [2/4] 启动 AstrBot 智能对话中枢 (Port 6185 / 11229)...
 echo ==========================================================
-start /min "" "D:\AstrBot\.venv\Scripts\python.exe" "D:\AstrBot\main.py"
+start /min "AstrBot" "D:\AstrBot\.venv\Scripts\python.exe" "D:\AstrBot\main.py"
 
 echo.
 echo ==========================================================
-echo [3/3] 启动 Akasha-WeChat 桥接服务 (Port 8766)...
+echo [3/4] 启动 WeFlow 消息客户端 (D:\Tencent\Weixin\WeFlow)...
 echo ==========================================================
-echo.
-echo 🌐 微信桥接控制面板:   http://127.0.0.1:8766
-echo 🤖 AstrBot 智能中枢:    http://127.0.0.1:6185
-echo 🏢 本地大模型中转站:    http://127.0.0.1:3000
-echo.
-echo 💡 请确保 WeFlow 客户端正在运行并监听 5031 端口！
-echo.
+start "" "D:\Tencent\Weixin\WeFlow\WeFlow.exe"
 
-cd /d "D:\Akasha-WeChat\wechat-weflow-bridge-ob11"
-"d:\招聘\.venv\Scripts\python.exe" main.py
+echo.
+echo ==========================================================
+echo [4/4] 启动 Akasha-WeChat 微信自动化桥接器...
+echo ==========================================================
+cd /d "D:\Tencent\Weixin\Akasha-WeChat\wechat-weflow-bridge-ob11"
+"D:\招聘\.venv\Scripts\python.exe" main.py
 
 pause
