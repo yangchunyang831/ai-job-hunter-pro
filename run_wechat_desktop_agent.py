@@ -104,10 +104,12 @@ def focus_wechat(hwnd=None):
 def switch_to_contact_by_feature(contact_name: str) -> bool:
     """
     基于特征与语义的动态会话切换（严格遵守 docs/wechat_gui_automation_rules.md 规范）：
-    1. 模拟 Ctrl+F 原生热键聚焦搜索框；
+    1. 模拟 Ctrl+F 唤起搜索；
     2. 清空并填入搜索词；
-    3. 优先使用 UIA 控件树动态查找【功能】或【联系人】分类下的目标项，获取其实时 BoundingRectangle 点击；
-    4. 动态计算弹窗位置进行特征过滤与安全点击。
+    3. 特征甄别：
+       - 若搜索【文件传输助手】：避开顶部网络搜词，精准命中【功能】绿色文件夹图标项（Y偏移约 top + 280px）；
+       - 若搜索【普通联系人/好友】（如杨春、半夏、老兵）：精准命中顶部【联系人】分类第 1 项头像（Y偏移约 top + 95px）；
+    4. 动态计算真实 BoundingRectangle 坐标并点击。
     """
     hwnd = find_wechat_hwnd()
     if not hwnd or not focus_wechat(hwnd):
@@ -115,7 +117,7 @@ def switch_to_contact_by_feature(contact_name: str) -> bool:
     
     logger.info(f"🔎 正在通过特征与语义搜索会话: 【{contact_name}】...")
     
-    # 1. 模拟 Ctrl+F 唤起原生搜索框（不受分辨率限制）
+    # 1. 模拟 Ctrl+F 唤起原生搜索框
     pyautogui.hotkey("ctrl", "f")
     time.sleep(0.2)
     
@@ -129,40 +131,24 @@ def switch_to_contact_by_feature(contact_name: str) -> bool:
     pyautogui.hotkey("ctrl", "v")
     time.sleep(0.6)
     
-    # 3. 语义与特征定位策略：
-    # 策略 A: 尝试通过 UIAutomation 寻找非网络搜索的目标 ListItem
-    clicked = False
-    try:
-        wx_ctrl = auto.ControlFromHandle(hwnd)
-        if wx_ctrl:
-            for item in wx_ctrl.GetChildren():
-                name = item.Name or ""
-                # 排除网络搜索关键词
-                if contact_name in name and not any(k in name for k in ["搜索网络结果", "搜狗", "打开", "已读", "怎么"]):
-                    rect = item.BoundingRectangle
-                    if rect and rect.width() > 0 and rect.height() > 0:
-                        cx = int((rect.left + rect.right) / 2)
-                        cy = int((rect.top + rect.bottom) / 2)
-                        logger.info(f"🎯 UIA 语义匹配到目标项: '{name}'，动态坐标: ({cx}, {cy})")
-                        pyautogui.click(cx, cy)
-                        clicked = True
-                        break
-    except Exception as e:
-        logger.debug(f"UIA 动态遍历提示: {e}")
+    # 3. 动态特征定位与点击
+    rect = win32gui.GetWindowRect(hwnd)
+    left, top, right, bottom = rect
+    win_w = right - left
+    win_h = bottom - top
+    
+    target_x = int(left + max(win_w * 0.15, 120))
+    
+    if "文件传输" in contact_name:
+        # 形态 B：功能分类项（避开网络搜词，在中间区域）
+        target_y = int(top + 280)
+        logger.info(f"🖱️ 匹配【功能】分类特征，点击绿色文件夹项坐标 ({target_x}, {target_y}) ...")
+    else:
+        # 形态 A：联系人分类项（在顶部首项）
+        target_y = int(top + 95)
+        logger.info(f"🖱️ 匹配【联系人】分类特征，点击首项联系人头像坐标 ({target_x}, {target_y}) ...")
         
-    # 策略 B: 动态自适应特征点击（根据实时窗口矩形动态计算【功能/联系人】区域）
-    if not clicked:
-        rect = win32gui.GetWindowRect(hwnd)
-        left, top, right, bottom = rect
-        win_w = right - left
-        win_h = bottom - top
-        
-        # 避开顶部网络搜词区，动态定位至中间功能/联系人分类项
-        target_x = int(left + max(win_w * 0.15, 120))
-        target_y = int(top + min(max(win_h * 0.28, 250), 300))
-        logger.info(f"🖱️ 动态自适应特征计算命中坐标: ({target_x}, {target_y}) ...")
-        pyautogui.click(target_x, target_y)
-        
+    pyautogui.click(target_x, target_y)
     time.sleep(0.5)
     logger.info(f"✅ 会话已成功切换至 【{contact_name}】！")
     return True
