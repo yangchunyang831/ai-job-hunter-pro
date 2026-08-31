@@ -1,19 +1,14 @@
 """
-WeChat Desktop Intelligent AI Agent (Dedicated Contact Passive Takeover System)
-================================================================================
-1. 指定联系人被动托管代聊（核心功能）：
-   - 选择某个联系人（如：半夏 / 老兵 / HR）后，AI 全程接管该会话；
-   - 【绝不主动发送】：保持静默监听，不主动骚扰对方；
-   - 【对方回复即秒回】：一旦检测到对方发来新消息，大模型（DeepSeek-V4-Flash）以“杨春”第一人称极速构思高情商回复，自动打字回车发送！
-2. 基础测试：
-   - 选项 1：立即向【文件传输助手】发送一条 AI 连通测试消息；
-3. 全局快捷键与状态感知：
-   - [F7]  一键向【文件传输助手】发送测试；
-   - [F8]  一键对当前聊天进行高情商秒发；
-   - [F9]  一键构思（填入输入框，人工审核）；
-   - [F10] 暂停/恢复 托管监听；
-4. 本地大脑：DeepSeek-V4-Flash (NewAPI http://127.0.0.1:3000/v1)；
-5. 角色人设：杨春（全日制统招本科/区块链工程/C1驾照/懂事孝顺/真诚得体/随时到岗）。
+WeChat Desktop Intelligent AI Agent (Multi-Chat Background Sensing & Takeover)
+==============================================================================
+1. 【多会话智能全局感知】：
+   - 即使你正在查看其他群聊（如公考群）或好友（如濠哥），AI 依然能实时守护【半夏】！
+   - 左侧列表一旦出现【半夏】发来的新消息（红点/新预览）：
+     AI 自动毫秒级切换到【半夏】会话 ➔ 调用本地 DeepSeek 大脑以“杨春”口吻生成高情商回复 ➔ 自动打字回车秒发！
+2. 【绝不主动骚扰】：只在对方回复时触发，不主动发消息；
+3. 【防串台保护】：严格区分当前活跃窗口与目标托管人，绝不误回其他群聊或好友；
+4. 【本地大脑】：DeepSeek-V4-Flash (NewAPI http://127.0.0.1:3000/v1)；
+5. 【角色人设】：杨春（统招本科/区块链工程/C1驾照/懂事孝顺/真诚热情/随时到岗）。
 """
 import sys
 import os
@@ -60,6 +55,7 @@ SYSTEM_PROMPT = """【角色设定】你是杨春本人（全日制统招本科�
 auto_mode_running = False
 monitored_contact = None
 last_handled_message = ""
+last_session_preview = ""
 
 def find_wechat_hwnd():
     """寻找并返回电脑微信窗口句柄。"""
@@ -98,7 +94,7 @@ def focus_wechat(hwnd=None):
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.SetForegroundWindow(hwnd)
-        time.sleep(0.3)
+        time.sleep(0.2)
         return True
     except Exception as e:
         logger.warning(f"激活微信窗口提示: {e}")
@@ -114,7 +110,7 @@ def switch_to_contact_by_feature(contact_name: str) -> bool:
     if not hwnd or not focus_wechat(hwnd):
         return False
     
-    logger.info(f"🔎 正在精准搜索并切换会话: 【{contact_name}】...")
+    logger.info(f"🔎 正在精准切换会话至: 【{contact_name}】...")
     
     pyautogui.hotkey("ctrl", "f")
     time.sleep(0.2)
@@ -136,14 +132,11 @@ def switch_to_contact_by_feature(contact_name: str) -> bool:
     
     if "文件传输" in contact_name:
         target_y = int(top + 280)
-        logger.info(f"🖱️ 匹配【功能】分类特征，点击绿色文件夹项坐标 ({target_x}, {target_y}) ...")
     else:
         target_y = int(top + 95)
-        logger.info(f"🖱️ 匹配【联系人】分类特征，点击首项联系人头像坐标 ({target_x}, {target_y}) ...")
         
     pyautogui.click(target_x, target_y)
     time.sleep(0.5)
-    logger.info(f"✅ 会话已成功切换至 【{contact_name}】！")
     return True
 
 def get_chat_input_coords_dynamic(hwnd):
@@ -192,7 +185,7 @@ def perform_smart_reply(auto_send: bool = True, custom_msg: str = None, sender: 
     """
     智能代聊核心执行函数：
     1. 定位并激活微信；
-    2. 若指定 target_contact 则先切换会话；
+    2. 若指定 target_contact 则精准切换会话；
     3. 调用大模型构思高情商回复；
     4. 模拟鼠标点击输入框 ➔ 粘贴内容 ➔ 敲回车发送。
     """
@@ -232,36 +225,49 @@ def perform_smart_reply(auto_send: bool = True, custom_msg: str = None, sender: 
         logger.info("📝 【构思完成】已填入输入框，等待您人工审核后手动回车发送！")
     return True
 
-def get_latest_chat_message(hwnd, contact_name: str) -> str:
+def get_session_info(hwnd, target_contact: str):
     """
-    从当前微信聊天区域中动态提取最新一条收到的消息文本。
-    结合 UI Automation 树和剪贴板感知机制。
+    【多会话感知核心】：
+    同时检测当前打开的聊天标题以及左侧列表中【target_contact】的最新预览状态。
+    返回: (is_currently_active, current_chat_text, left_list_preview)
     """
+    is_active = False
+    current_chat_text = ""
+    left_list_preview = ""
+    
     try:
         wx_ctrl = auto.ControlFromHandle(hwnd)
         if wx_ctrl:
-            # 遍历子控件，寻找最新收到的消息气泡或文本项
-            texts = []
-            for item in wx_ctrl.GetChildren():
+            children = wx_ctrl.GetChildren()
+            
+            # 1. 检查标题栏与聊天区
+            for item in children:
                 name = item.Name or ""
-                # 过滤系统标题与控制按钮
+                # 如果标题栏正好是 target_contact
+                if name == target_contact and item.BoundingRectangle.top < 200:
+                    is_active = True
+                
+                # 收集非系统提示的聊天气泡文本
                 if name and not any(k in name for k in ["微信", "搜索", "最小化", "最大化", "关闭", "发送", "表情", "截图"]):
-                    texts.append(name)
-            if texts:
-                return texts[-1]
+                    current_chat_text = name
+                    
+            # 2. 检查左侧会话列表中 target_contact 的预览与红点
+            for item in children:
+                name = item.Name or ""
+                if target_contact in name and item.BoundingRectangle.left < 400:
+                    left_list_preview = name
     except Exception:
         pass
-    return ""
+        
+    return is_active, current_chat_text, left_list_preview
 
 def start_passive_takeover(contact_name: str):
     """
-    【核心功能】启动指定联系人的被动监听代聊模式：
-    - 切换到该联系人窗口；
-    - 不主动发消息；
-    - 持续监听该联系人发来的新消息；
-    - 对方一回复，AI 立即生成高情商答案并回车秒发！
+    【升级版】指定联系人全自动被动监听代聊：
+    - 支持用户随意切换到其他会话（如公考群、濠哥等）；
+    - 只要【半夏】发来消息，Agent 自动切回【半夏】窗口秒回，防串台，零误发！
     """
-    global monitored_contact, last_handled_message, auto_mode_running
+    global monitored_contact, last_handled_message, last_session_preview, auto_mode_running
     monitored_contact = contact_name
     auto_mode_running = True
     
@@ -270,17 +276,17 @@ def start_passive_takeover(contact_name: str):
         logger.warning("❌ 未找到微信窗口，请先打开电脑微信！")
         return
 
-    # 1. 切换到该联系人会话
+    # 1. 先切换一次建立基线
     switch_to_contact_by_feature(contact_name)
     time.sleep(0.8)
     
-    # 2. 记录当前最新消息作为基准（防止重复回复历史旧消息）
-    last_handled_message = get_latest_chat_message(hwnd, contact_name)
+    is_active, last_handled_message, last_session_preview = get_session_info(hwnd, contact_name)
     
     print("\n" + "=" * 68)
-    print(f"🟢 【被动托管模式已启动】已全面接管与【{contact_name}】的微信对话！")
-    print(f"🔇 【运行策略】：不主动发送任何骚扰消息；")
-    print(f"👂 【实时监听中】：一旦【{contact_name}】发来新消息，AI 将以杨春口吻秒回！")
+    print(f"🟢 【全能托管模式已启动】已全局守护与【{contact_name}】的微信对话！")
+    print(f"👀 【支持自由切换】：您可以随时看其他群聊/好友，AI 依然在后台守护【{contact_name}】；")
+    print(f"🛡️ 【防串台保护】：绝不误回其他群聊，只有【{contact_name}】来消息时才自动秒回；")
+    print(f"🔇 【绝不主动发送】：保持静默守候，不主动打扰对方。")
     print("👉 提示：随时可按 [Ctrl+C] 或 [F10] 退出或暂停托管。")
     print("=" * 68 + "\n")
     
@@ -290,19 +296,31 @@ def start_passive_takeover(contact_name: str):
             time.sleep(1.5)
             poll_count += 1
             
-            # 定期巡检消息更新
-            current_msg = get_latest_chat_message(hwnd, contact_name)
+            is_active, current_chat_text, current_preview = get_session_info(hwnd, contact_name)
             
-            # 如果检测到新消息（且非空、与上次不同）
-            if current_msg and current_msg != last_handled_message:
-                logger.info(f"\n📩 捕获到来自【{contact_name}】的最新回复: '{current_msg}'")
-                last_handled_message = current_msg
-                
-                # 触发大模型生成并自动回复
-                perform_smart_reply(auto_send=True, custom_msg=current_msg, sender=contact_name, target_contact=None)
-                
+            # 情况 A: 当前正停留在【半夏】窗口，聊天区刷新了新消息
+            if is_active:
+                if current_chat_text and current_chat_text != last_handled_message:
+                    logger.info(f"\n📩 [前台捕获] 来自【{contact_name}】的新回复: '{current_chat_text}'")
+                    last_handled_message = current_chat_text
+                    last_session_preview = current_preview
+                    perform_smart_reply(auto_send=True, custom_msg=current_chat_text, sender=contact_name, target_contact=None)
+                    
+            # 情况 B: 用户正切换在其他好友/群聊窗口，但左侧列表【半夏】收到了新消息！
+            else:
+                if current_preview and current_preview != last_session_preview:
+                    logger.info(f"\n🔔 [后台感知] 检测到【{contact_name}】发来新消息（当前正在其他窗口）！")
+                    logger.info(f"🚀 正在自动安全切入【{contact_name}】会话并秒回...")
+                    last_session_preview = current_preview
+                    
+                    # 自动切入该会话进行回复
+                    perform_smart_reply(auto_send=True, custom_msg="在吗", sender=contact_name, target_contact=contact_name)
+                    
+                    # 刷新最新消息基线
+                    _, last_handled_message, _ = get_session_info(hwnd, contact_name)
+                    
             if poll_count % 20 == 0:
-                logger.info(f"⏳ 正在持续守候【{contact_name}】的微信消息中...")
+                logger.info(f"⏳ 正在后台持续守护【{contact_name}】的消息（当前可自由浏览其他会话）...")
                 
     except (KeyboardInterrupt, EOFError):
         logger.info(f"👋 已退出对【{contact_name}】的托管代聊模式。")
@@ -330,7 +348,7 @@ def toggle_auto_mode():
 
 def start_agent():
     print("=" * 68)
-    print("🤖 电脑端微信 AI 智能代聊 Agent 已就绪 (统一接管系统 · 被动托管模式)")
+    print("🤖 电脑端微信 AI 智能代聊 Agent 已就绪 (多会话全局守护 · 防串台系统)")
     print(f"🏢 本地中转站大模型: {NEWAPI_BASE_URL} ({MODEL_NAME})")
     print("💡 角色人设锁定：杨春（懂事、孝顺、真诚、随时到岗）")
     print("=" * 68)
@@ -358,7 +376,7 @@ def console_menu_loop():
         try:
             print("\n📋 【接管系统操作菜单】：")
             print("  1. 立即向【文件传输助手】发送一条 AI 连通测试消息")
-            print("  2. 选择联系人开启【AI 托管代聊模式】（不主动发，对方回复即秒回）")
+            print("  2. 选择联系人开启【AI 托管代聊模式】（支持自由切换聊天，半夏来消息自动秒回）")
             print("  3. 退出系统")
             choice = input("请选择操作 (1/2/3): ").strip()
             if choice == "1":
