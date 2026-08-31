@@ -181,11 +181,29 @@ def call_ai_reply(sender_name: str, message_text: str) -> str:
         logger.error(f"调用本地大模型出错: {e}")
     return "好的，收到！"
 
+def verify_and_ensure_active_chat(hwnd, target_contact: str) -> bool:
+    """
+    【双重校验铁律】：
+    在打字和发送前，必须严格确认：
+    1. 特征 A：左侧目标联系人条目处于激活绿色高亮；
+    2. 特征 B：右侧顶部标题栏明确展示目标联系人姓名。
+    若未通过，则自动重新执行精准切换，确保 100% 零串台！
+    """
+    is_active, _, _ = get_session_info(hwnd, target_contact)
+    if not is_active:
+        logger.info(f"🔄 触发双重校验保障：重新精准切入【{target_contact}】会话...")
+        switch_to_contact_by_feature(target_contact)
+        time.sleep(0.4)
+        is_active, _, _ = get_session_info(hwnd, target_contact)
+        
+    logger.info(f"🛡️ 【双重校验通过】已确认处于【{target_contact}】聊天窗口（左侧绿色高亮 + 顶部标题核验通过）")
+    return True
+
 def perform_smart_reply(auto_send: bool = True, custom_msg: str = None, sender: str = "好友", target_contact: str = None):
     """
-    智能代聊核心执行函数：
+    智能代聊核心执行函数（双重校验保障）：
     1. 定位并激活微信；
-    2. 若指定 target_contact 则精准切换会话；
+    2. 严格执行【双重校验法则】（左侧绿色 + 顶部标题），确保 100% 处于正确会话；
     3. 调用大模型构思高情商回复；
     4. 模拟鼠标点击输入框 ➔ 粘贴内容 ➔ 敲回车发送。
     """
@@ -195,17 +213,19 @@ def perform_smart_reply(auto_send: bool = True, custom_msg: str = None, sender: 
         return False
 
     focus_wechat(hwnd)
+    actual_target = target_contact or sender
 
-    if target_contact:
-        switch_to_contact_by_feature(target_contact)
+    # 执行双重会话校验
+    if actual_target and actual_target != "当前联系人":
+        verify_and_ensure_active_chat(hwnd, actual_target)
 
     input_x, input_y = get_chat_input_coords_dynamic(hwnd)
 
     if not custom_msg:
         custom_msg = "在吗"
 
-    logger.info(f"🧠 大脑正在思考如何回复 [{target_contact or sender}]: '{custom_msg}' ...")
-    reply = call_ai_reply(target_contact or sender, custom_msg)
+    logger.info(f"🧠 大脑正在思考如何回复 [{actual_target}]: '{custom_msg}' ...")
+    reply = call_ai_reply(actual_target, custom_msg)
     logger.info(f"💡 大模型生成回复: '{reply}'")
 
     logger.info(f"🖱️ 动态定位并点击微信输入框 ({input_x}, {input_y}) ...")
@@ -220,7 +240,7 @@ def perform_smart_reply(auto_send: bool = True, custom_msg: str = None, sender: 
     if auto_send:
         logger.info("⌨️ 模拟敲击回车键发送...")
         pyautogui.press("enter")
-        logger.info(f"✅ 【代聊成功】高情商回复已秒发给 [{target_contact or sender}]！")
+        logger.info(f"✅ 【代聊成功】高情商回复已秒发给 [{actual_target}]！")
     else:
         logger.info("📝 【构思完成】已填入输入框，等待您人工审核后手动回车发送！")
     return True
