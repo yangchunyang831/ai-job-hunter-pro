@@ -2,11 +2,11 @@
 WeChat Desktop Intelligent AI Agent (Unified Takeover & Automation System)
 ==========================================================================
 1. 智能窗口定位与聚焦：自动识别微信窗口；
-2. 智能会话切换：支持自动搜索并切换联系人（如【文件传输助手】、母亲【半夏】、老兵、HR）；
-3. 鼠标/键盘全自动接管：自动定位输入框、大模型生成高情商回复、敲回车发送；
+2. 智能会话精准切换：鼠标+键盘精确命中搜索结果（如【文件传输助手】、母亲【半夏】、老兵、HR）；
+3. 鼠标/键盘全自动接管：自动定位输入框、大模型生成高情商回复、敲回车秒发；
 4. 全局快捷键与交互式中枢：
    - [F7]  一键向【文件传输助手】发送 AI 连通测试；
-   - [F8]  一键对当前聊天进行极速高情商代聊秒发；
+   - [F8]  一键对当前绿色高亮聊天进行极速高情商代聊秒发；
    - [F9]  一键构思高情商回复（填入输入框，人工审核）；
    - [F10] 开启/关闭 全自动挂机巡检模式；
 5. 本地大脑：DeepSeek-V4-Flash (NewAPI http://127.0.0.1:3000/v1)；
@@ -100,18 +100,46 @@ def focus_wechat(hwnd=None):
         return True
 
 def switch_to_contact(contact_name: str) -> bool:
-    """自动使用微信全局搜索切换到指定联系人会话。"""
-    if not focus_wechat():
+    """精准切换会话：搜索联系人并点击第一条匹配结果。"""
+    hwnd = find_wechat_hwnd()
+    if not hwnd or not focus_wechat(hwnd):
         return False
-    logger.info(f"🔎 正在自动搜索并切换会话: 【{contact_name}】...")
-    pyautogui.hotkey("ctrl", "f")
-    time.sleep(0.3)
-    pyperclip.copy(contact_name)
+    
+    rect = win32gui.GetWindowRect(hwnd)
+    left, top, right, bottom = rect
+    width = right - left
+    
+    logger.info(f"🔎 正在精准搜索并切换会话: 【{contact_name}】...")
+    
+    # 1. 模拟鼠标点击搜索框（微信左上方区域：left + 15% 宽度, top + 35px）
+    search_x = int(left + width * 0.15)
+    search_y = int(top + 35)
+    pyautogui.click(search_x, search_y)
     time.sleep(0.2)
+    
+    # 2. 清空搜索框并填入目标联系人
+    pyautogui.hotkey("ctrl", "a")
+    time.sleep(0.1)
+    pyautogui.press("backspace")
+    time.sleep(0.1)
+    pyperclip.copy(contact_name)
+    time.sleep(0.1)
     pyautogui.hotkey("ctrl", "v")
-    time.sleep(0.5)
+    time.sleep(0.6)
+    
+    # 3. 按下向下方向键选中第一个搜索结果并回车
+    pyautogui.press("down")
+    time.sleep(0.2)
     pyautogui.press("enter")
+    time.sleep(0.3)
+    
+    # 4. 双重保障：鼠标点击搜索结果第一项区域（top + 110px）
+    result_x = int(left + width * 0.15)
+    result_y = int(top + 110)
+    pyautogui.click(result_x, result_y)
     time.sleep(0.5)
+    
+    logger.info(f"✅ 会话已成功切换至 【{contact_name}】！")
     return True
 
 def get_chat_input_coords(hwnd):
@@ -149,7 +177,7 @@ def perform_smart_reply(auto_send: bool = True, custom_msg: str = None, sender: 
     """
     智能代聊核心执行函数：
     1. 定位并激活微信；
-    2. 若指定 target_contact 则先切会话；
+    2. 若指定 target_contact 则先精准切会话；
     3. 调用大模型构思高情商回复；
     4. 模拟鼠标点击输入框 ➔ 粘贴内容 ➔ 敲回车发送。
     """
@@ -168,13 +196,13 @@ def perform_smart_reply(auto_send: bool = True, custom_msg: str = None, sender: 
     if not custom_msg:
         custom_msg = "在吗"
 
-    logger.info(f"🧠 大脑正在思考如何回复 [{sender}]: '{custom_msg}' ...")
-    reply = call_ai_reply(sender, custom_msg)
+    logger.info(f"🧠 大脑正在思考如何回复 [{target_contact or sender}]: '{custom_msg}' ...")
+    reply = call_ai_reply(target_contact or sender, custom_msg)
     logger.info(f"💡 大模型生成回复: '{reply}'")
 
     logger.info(f"🖱️ 模拟鼠标点击微信输入框 ({input_x}, {input_y}) ...")
     pyautogui.click(input_x, input_y)
-    time.sleep(0.2)
+    time.sleep(0.3)
 
     pyperclip.copy(reply)
     time.sleep(0.2)
@@ -194,12 +222,12 @@ def hotkey_f7_handler():
     perform_smart_reply(auto_send=True, custom_msg="测试系统连通性与大模型接管状态", sender="文件传输助手", target_contact="文件传输助手")
 
 def hotkey_f8_handler():
-    logger.info("\n🔔 [快捷键 F8 触发] 一键对当前聊天进行智能代聊秒发...")
-    perform_smart_reply(auto_send=True, custom_msg="在吗", sender="联系人")
+    logger.info("\n🔔 [快捷键 F8 触发] 一键对当前绿色高亮聊天进行智能代聊秒发...")
+    perform_smart_reply(auto_send=True, custom_msg="在吗", sender="当前联系人")
 
 def hotkey_f9_handler():
     logger.info("\n🔔 [快捷键 F9 触发] 一键构思回复（填入输入框，不直接发送）...")
-    perform_smart_reply(auto_send=False, custom_msg="在吗", sender="联系人")
+    perform_smart_reply(auto_send=False, custom_msg="在吗", sender="当前联系人")
 
 def toggle_auto_mode():
     global auto_mode_running
@@ -228,7 +256,6 @@ def start_agent():
     print("  👉 [F10] 开关全自动挂机模式")
     print("=" * 68)
 
-    # 启动后台守护线程
     t = threading.Thread(target=auto_loop, daemon=True)
     t.start()
 
@@ -239,9 +266,7 @@ def start_agent():
             keyboard.add_hotkey("F9", hotkey_f9_handler)
             keyboard.add_hotkey("F10", toggle_auto_mode)
             logger.info("✅ 全局快捷键 F7 / F8 / F9 / F10 已注册成功，随时待命中！")
-            logger.info("👉 提示：现在只要按下键盘上的 F7，即可自动向【文件传输助手】发送 AI 消息！")
-            
-            # 同时也提供控制台菜单
+            logger.info("👉 提示：按下 F7 自动切换文件传输助手发送；在任何聊天中按 F8 即可秒回当前好友！")
             console_menu_loop()
         except Exception as e:
             logger.warning(f"快捷键注册异常: {e}")
